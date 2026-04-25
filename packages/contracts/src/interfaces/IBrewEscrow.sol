@@ -10,11 +10,14 @@ interface IBrewEscrow {
         uint64 deadline;
         bytes32 templateId;
         bool released;
+        bool refunded;
     }
 
     error NotVerifier();
     error TrustAlreadyReleased(uint256 trustId);
+    error TrustAlreadyRefunded(uint256 trustId);
     error TrustDoesNotExist(uint256 trustId);
+    error RefundDisabled(uint256 trustId);
     error DeadlineNotPassed(uint64 deadline);
     error NotSponsor(address caller, address sponsor);
     error InvalidTrustParams();
