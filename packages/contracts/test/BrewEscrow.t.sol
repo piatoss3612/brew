@@ -83,12 +83,7 @@ contract BrewEscrowTest is Test {
         vm.startPrank(verifier);
         escrow.releaseTo(trustId, beneficiary);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBrewEscrow.TrustAlreadyReleased.selector,
-                trustId
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBrewEscrow.TrustAlreadyReleased.selector, trustId));
         escrow.releaseTo(trustId, beneficiary);
         vm.stopPrank();
     }
@@ -106,12 +101,7 @@ contract BrewEscrowTest is Test {
         uint256 trustId = _createTrust(deadline);
 
         vm.prank(sponsor);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBrewEscrow.DeadlineNotPassed.selector,
-                deadline
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBrewEscrow.DeadlineNotPassed.selector, deadline));
         escrow.refund(trustId);
     }
 
@@ -119,9 +109,7 @@ contract BrewEscrowTest is Test {
         uint256 trustId = _createTrust(0);
 
         vm.prank(sponsor);
-        vm.expectRevert(
-            abi.encodeWithSelector(IBrewEscrow.RefundDisabled.selector, trustId)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBrewEscrow.RefundDisabled.selector, trustId));
         escrow.refund(trustId);
     }
 
@@ -131,13 +119,7 @@ contract BrewEscrowTest is Test {
         vm.warp(deadline);
 
         vm.prank(stranger);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBrewEscrow.NotSponsor.selector,
-                stranger,
-                sponsor
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBrewEscrow.NotSponsor.selector, stranger, sponsor));
         escrow.refund(trustId);
     }
 
@@ -167,25 +149,14 @@ contract BrewEscrowTest is Test {
         escrow.refund(trustId);
 
         vm.prank(verifier);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBrewEscrow.TrustAlreadyRefunded.selector,
-                trustId
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBrewEscrow.TrustAlreadyRefunded.selector, trustId));
         escrow.releaseTo(trustId, beneficiary);
     }
 
     function _createTrust(uint64 deadline) internal returns (uint256 trustId) {
         vm.startPrank(sponsor);
         token.approve(address(escrow), AMOUNT);
-        trustId = escrow.createTrust(
-            beneficiary,
-            address(token),
-            AMOUNT,
-            deadline,
-            TEMPLATE_ID
-        );
+        trustId = escrow.createTrust(beneficiary, address(token), AMOUNT, deadline, TEMPLATE_ID);
         vm.stopPrank();
     }
 }

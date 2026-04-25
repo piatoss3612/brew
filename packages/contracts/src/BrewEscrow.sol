@@ -25,13 +25,10 @@ contract BrewEscrow is IBrewEscrow, Ownable {
         emit VerifierUpdated(newVerifier);
     }
 
-    function createTrust(
-        address beneficiary,
-        address token,
-        uint256 amount,
-        uint64 deadline,
-        bytes32 templateId
-    ) external returns (uint256 trustId) {
+    function createTrust(address beneficiary, address token, uint256 amount, uint64 deadline, bytes32 templateId)
+        external
+        returns (uint256 trustId)
+    {
         if (beneficiary == address(0)) revert InvalidTrustParams();
         if (token == address(0)) revert InvalidTrustParams();
         if (amount == 0) revert InvalidTrustParams();
@@ -53,15 +50,7 @@ contract BrewEscrow is IBrewEscrow, Ownable {
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
-        emit TrustCreated(
-            trustId,
-            msg.sender,
-            beneficiary,
-            templateId,
-            token,
-            amount,
-            deadline
-        );
+        emit TrustCreated(trustId, msg.sender, beneficiary, templateId, token, amount, deadline);
     }
 
     function releaseTo(uint256 trustId, address recipient) external {
@@ -98,10 +87,7 @@ contract BrewEscrow is IBrewEscrow, Ownable {
         emit Refunded(trustId, trust.sponsor, trust.amount);
     }
 
-    function isReleased(
-        uint256 trustId,
-        address beneficiary
-    ) external view returns (bool) {
+    function isReleased(uint256 trustId, address beneficiary) external view returns (bool) {
         Trust storage trust = _trusts[trustId];
         return trust.beneficiary == beneficiary && trust.released;
     }
@@ -110,9 +96,7 @@ contract BrewEscrow is IBrewEscrow, Ownable {
         return _loadTrust(trustId);
     }
 
-    function _loadTrust(
-        uint256 trustId
-    ) internal view returns (Trust storage trust) {
+    function _loadTrust(uint256 trustId) internal view returns (Trust storage trust) {
         trust = _trusts[trustId];
         if (trust.sponsor == address(0)) revert TrustDoesNotExist(trustId);
     }
