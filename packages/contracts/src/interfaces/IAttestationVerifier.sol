@@ -41,6 +41,7 @@ interface IAttestationVerifier {
         address beneficiary
     );
 
+    /// @notice Registers the EAS schema and freshness rules for one template.
     function registerTemplate(
         bytes32 templateId,
         bytes32 schemaUid,
@@ -48,26 +49,31 @@ interface IAttestationVerifier {
         uint64 stalenessWindowSeconds
     ) external;
 
+    /// @notice Allows or blocks an issuer for a registered template.
     function setIssuerAllowed(
         bytes32 templateId,
         address issuer,
         bool allowed
     ) external;
 
+    /// @notice Verifies an EAS attestation, then asks the escrow to release.
     function verifyAndRelease(
         uint256 trustId,
         address beneficiary,
         bytes32 attestationUid
     ) external;
 
+    /// @notice Returns the registered template configuration.
     function getTemplate(
         bytes32 templateId
     ) external view returns (Template memory);
 
+    /// @notice Returns whether an issuer is allowed for a template.
     function isIssuerAllowed(
         bytes32 templateId,
         address issuer
     ) external view returns (bool);
 
+    /// @notice Returns whether an attestation UID has already been used.
     function consumed(bytes32 attestationUid) external view returns (bool);
 }
