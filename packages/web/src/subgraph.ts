@@ -27,7 +27,7 @@ const BREW_STATUS_QUERY = `
       verifier
       updatedAt
     }
-    templates(first: 10) {
+    templates(first: 10, orderBy: registeredAt, orderDirection: asc) {
       id
       templateId
       schemaUid
@@ -60,6 +60,15 @@ export type BrewTrust = {
   verifiedTx: string | null;
 };
 
+export type BrewTemplate = {
+  id: string;
+  templateId: string;
+  schemaUid: string;
+  expiryWindowSeconds: string;
+  stalenessWindowSeconds: string;
+  registeredAt: string;
+};
+
 export type BrewStatus = {
   trusts: BrewTrust[];
   verifierConfigs: Array<{
@@ -67,14 +76,7 @@ export type BrewStatus = {
     verifier: string;
     updatedAt: string;
   }>;
-  templates: Array<{
-    id: string;
-    templateId: string;
-    schemaUid: string;
-    expiryWindowSeconds: string;
-    stalenessWindowSeconds: string;
-    registeredAt: string;
-  }>;
+  templates: BrewTemplate[];
 };
 
 type GraphQlResponse<T> = {
