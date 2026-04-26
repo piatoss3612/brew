@@ -14,10 +14,16 @@ interface IAttestationVerifier {
     error WrongSubject(uint256 trustId, address expected, address actual);
     error AttestationRevoked(bytes32 attestationUid, uint64 revocationTime);
     error AttestationExpired(bytes32 attestationUid, uint64 expirationTime);
+    error AttestationNotFound(bytes32 attestationUid);
+    error AttestationExpiryMissing(bytes32 attestationUid);
+    error AttestationExpiryTooLong(bytes32 attestationUid, uint64 expirationTime, uint256 maxExpirationTime);
     error AttestationStale(bytes32 attestationUid, uint64 attestationTime, uint64 stalenessWindow);
     error AlreadyConsumed(bytes32 attestationUid);
     error TemplateNotRegistered(bytes32 templateId);
     error TemplateAlreadyRegistered(bytes32 templateId);
+    error InvalidVerifierConfig();
+    error InvalidTemplateConfig();
+    error InvalidIssuer();
 
     event TemplateRegistered(
         bytes32 indexed templateId, bytes32 schemaUid, uint64 expiryWindowSeconds, uint64 stalenessWindowSeconds
