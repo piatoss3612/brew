@@ -1,66 +1,141 @@
-## Foundry
+# Brew Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## Build And Test
 
-Foundry consists of:
-
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```sh
+forge build
+forge test
+forge fmt
 ```
 
-### Test
+## Deploy Order
 
-```shell
-$ forge test
+Run these commands from `packages/contracts`.
+
+### 0. Prepare Local Env
+
+```sh
+cp .env.example .env
 ```
 
-### Format
+Load the env values:
 
-```shell
-$ forge fmt
+```sh
+source .env
 ```
 
-### Gas Snapshots
+Import the deployer key into Foundry's encrypted keystore once. The private key
+is entered into Foundry's prompt and must not be stored in `.env`.
 
-```shell
-$ forge snapshot
+```sh
+cast wallet import "$BREW_DEPLOYER_ACCOUNT" --interactive
+cast wallet list
 ```
 
-### Anvil
+### 1. Core Contracts
 
-```shell
-$ anvil
+Deploy `BrewEscrow`, deploy `AttestationVerifier`, and wire
+`BrewEscrow.setVerifier(verifier)`.
+
+```sh
+forge script script/DeployBrewCore.s.sol:DeployBrewCore \
+  --rpc-url sepolia \
+  --account "$BREW_DEPLOYER_ACCOUNT" \
+  --broadcast \
+  --slow \
+  --verify
 ```
 
-### Deploy
+Copy the printed values into `.env`:
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+- `BREW_ESCROW_ADDRESS`
+- `BREW_VERIFIER_ADDRESS`
+
+Reload `.env` after filling those addresses:
+
+```sh
+source .env
 ```
 
-### Cast
+result:
 
-```shell
-$ cast <subcommand>
+```
+BREW_ESCROW_ADDRESS=0xED5160554F93138c7f537bC1C99BFa475c97E622
+BREW_VERIFIER_ADDRESS=0xE8a519bB3B47864c6aB49e97D6338DAF5217aF6a
 ```
 
-### Help
+### 2. EAS Schemas
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
+Register or reuse Brew's four public-audit schemas on EAS.
+
+```sh
+forge script script/RegisterBrewSchemas.s.sol:RegisterBrewSchemas \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --account "$BREW_DEPLOYER_ACCOUNT" \
+  --broadcast \
+  --slow
 ```
+
+The schema UIDs are deterministic, so the configure script derives them from
+`BrewConfig` instead of requiring `.env` copy/paste.
+
+result:
+
+```
+WORKPLACE_SCHEMA_UID=0x01a3629d02136181035c01693fc6fa5e868061456b8865f56ba9c51a4b36b5c1
+DEGREE_SCHEMA_UID=0xd9d697d74ca8ad8f0ee967b724eccadee7695b8f9a12f0ddb580e6aa6bbb3325
+DAO_GRANT_SCHEMA_UID=0x6429c150638a057d5d4b034e6530c9f1b5f300fc96edc0461d25effd8bfda9d5
+FELLOWSHIP_SCHEMA_UID=0xcd32f560f8ee50bc49024b8d847d4dabb9bf3672d88c6a64207e83dfde4f6a6a
+```
+
+### 3. Verifier Templates And Issuers
+
+Register verifier templates and allowlist the selected keystore signer as the
+demo issuer for all templates.
+
+```sh
+forge script script/ConfigureBrewVerifier.s.sol:ConfigureBrewVerifier \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --account "$BREW_DEPLOYER_ACCOUNT" \
+  --broadcast \
+  --slow
+```
+
+For the hackathon demo, the deployer account can act as both verifier owner and
+demo issuer. Later, the app can expose `setIssuerAllowed` if separate issuer
+accounts are needed.
+
+result:
+
+```
+registered template workplace_verified
+allowlisted issuer for workplace_verified: 0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
+0xa9d8d2ecfc304dc01f929851a2d337e70f772b9e87c59ef8809f01f29209d251
+registered template degree_verified
+allowlisted issuer for degree_verified: 0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
+0x7bdcb7d5f0d23fd2c4dcdc925fd5f1c4b9eea38d2907d352ead1fdfc9441feeb
+registered template dao_grant
+allowlisted issuer for dao_grant: 0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
+0xf67d547d8e713f410ce70bba56bc67d2b2371ece6803db184ec50e47a99b7d73
+registered template fellowship_milestone
+allowlisted issuer for fellowship_milestone: 0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
+0x92bdb8ca14551d4f3d29e067f01c52ba083495f325dbd55b31c0b9d810688faa
+BREW_CONFIG_SENDER=0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
+DEMO_ISSUER_ADDRESS=0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
+```
+
+### 4. Demo Token (Optional)
+
+Use this only when you want a local demo ERC-20 instead of a known Sepolia token.
+Set `DEMO_TOKEN_RECIPIENT` before running it.
+
+```sh
+forge script script/DeployDemoUSDC.s.sol:DeployDemoUSDC \
+  --rpc-url sepolia \
+  --account "$BREW_DEPLOYER_ACCOUNT" \
+  --broadcast \
+  -- slow \
+  --verify
+```
+
+Copy the printed `DEMO_TOKEN_ADDRESS` into `.env`.
