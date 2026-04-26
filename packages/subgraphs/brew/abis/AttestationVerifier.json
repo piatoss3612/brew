@@ -1,0 +1,378 @@
+[
+  {
+    "inputs": [
+      { "internalType": "address", "name": "initialOwner", "type": "address" },
+      { "internalType": "contract IEAS", "name": "eas_", "type": "address" },
+      {
+        "internalType": "contract IBrewEscrow",
+        "name": "escrow_",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "attestationUid", "type": "bytes32" }
+    ],
+    "name": "AlreadyConsumed",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "attestationUid",
+        "type": "bytes32"
+      },
+      { "internalType": "uint64", "name": "expirationTime", "type": "uint64" }
+    ],
+    "name": "AttestationExpired",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "attestationUid", "type": "bytes32" }
+    ],
+    "name": "AttestationExpiryMissing",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "attestationUid",
+        "type": "bytes32"
+      },
+      { "internalType": "uint64", "name": "expirationTime", "type": "uint64" },
+      {
+        "internalType": "uint256",
+        "name": "maxExpirationTime",
+        "type": "uint256"
+      }
+    ],
+    "name": "AttestationExpiryTooLong",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "attestationUid", "type": "bytes32" }
+    ],
+    "name": "AttestationNotFound",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "attestationUid",
+        "type": "bytes32"
+      },
+      { "internalType": "uint64", "name": "revocationTime", "type": "uint64" }
+    ],
+    "name": "AttestationRevoked",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "attestationUid",
+        "type": "bytes32"
+      },
+      { "internalType": "uint64", "name": "attestationTime", "type": "uint64" },
+      { "internalType": "uint64", "name": "stalenessWindow", "type": "uint64" }
+    ],
+    "name": "AttestationStale",
+    "type": "error"
+  },
+  { "inputs": [], "name": "InvalidIssuer", "type": "error" },
+  { "inputs": [], "name": "InvalidTemplateConfig", "type": "error" },
+  { "inputs": [], "name": "InvalidVerifierConfig", "type": "error" },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "templateId", "type": "bytes32" },
+      { "internalType": "address", "name": "issuer", "type": "address" }
+    ],
+    "name": "IssuerNotAllowed",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "owner", "type": "address" }
+    ],
+    "name": "OwnableInvalidOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "account", "type": "address" }
+    ],
+    "name": "OwnableUnauthorizedAccount",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "templateId", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "expected", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "actual", "type": "bytes32" }
+    ],
+    "name": "SchemaMismatch",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "templateId", "type": "bytes32" }
+    ],
+    "name": "TemplateAlreadyRegistered",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "templateId", "type": "bytes32" }
+    ],
+    "name": "TemplateNotRegistered",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "trustId", "type": "uint256" },
+      { "internalType": "address", "name": "expected", "type": "address" },
+      { "internalType": "address", "name": "actual", "type": "address" }
+    ],
+    "name": "WrongSubject",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "templateId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "issuer",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "allowed",
+        "type": "bool"
+      }
+    ],
+    "name": "IssuerAllowlisted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "templateId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "schemaUid",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "expiryWindowSeconds",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "stalenessWindowSeconds",
+        "type": "uint64"
+      }
+    ],
+    "name": "TemplateRegistered",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "trustId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "attestationUid",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "beneficiary",
+        "type": "address"
+      }
+    ],
+    "name": "Verified",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "attestationUid", "type": "bytes32" }
+    ],
+    "name": "consumed",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "eas",
+    "outputs": [
+      { "internalType": "contract IEAS", "name": "", "type": "address" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "escrow",
+    "outputs": [
+      { "internalType": "contract IBrewEscrow", "name": "", "type": "address" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "templateId", "type": "bytes32" }
+    ],
+    "name": "getTemplate",
+    "outputs": [
+      {
+        "components": [
+          { "internalType": "bytes32", "name": "schemaUid", "type": "bytes32" },
+          {
+            "internalType": "uint64",
+            "name": "expiryWindowSeconds",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "stalenessWindowSeconds",
+            "type": "uint64"
+          },
+          { "internalType": "bool", "name": "registered", "type": "bool" }
+        ],
+        "internalType": "struct IAttestationVerifier.Template",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "templateId", "type": "bytes32" },
+      { "internalType": "address", "name": "issuer", "type": "address" }
+    ],
+    "name": "isIssuerAllowed",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "templateId", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "schemaUid", "type": "bytes32" },
+      {
+        "internalType": "uint64",
+        "name": "expiryWindowSeconds",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint64",
+        "name": "stalenessWindowSeconds",
+        "type": "uint64"
+      }
+    ],
+    "name": "registerTemplate",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "templateId", "type": "bytes32" },
+      { "internalType": "address", "name": "issuer", "type": "address" },
+      { "internalType": "bool", "name": "allowed", "type": "bool" }
+    ],
+    "name": "setIssuerAllowed",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "newOwner", "type": "address" }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "trustId", "type": "uint256" },
+      { "internalType": "address", "name": "beneficiary", "type": "address" },
+      { "internalType": "bytes32", "name": "attestationUid", "type": "bytes32" }
+    ],
+    "name": "verifyAndRelease",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]

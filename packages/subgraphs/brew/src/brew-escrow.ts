@@ -1,92 +1,60 @@
 import {
-  OwnershipTransferred as OwnershipTransferredEvent,
   Refunded as RefundedEvent,
   Released as ReleasedEvent,
   TrustCreated as TrustCreatedEvent,
   VerifierUpdated as VerifierUpdatedEvent
 } from "../generated/BrewEscrow/BrewEscrow"
-import {
-  OwnershipTransferred,
-  Refunded,
-  Released,
-  TrustCreated,
-  VerifierUpdated
-} from "../generated/schema"
+import { Trust, VerifierConfig } from "../generated/schema"
 
-export function handleOwnershipTransferred(
-  event: OwnershipTransferredEvent
-): void {
-  let entity = new OwnershipTransferred(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.previousOwner = event.params.previousOwner
-  entity.newOwner = event.params.newOwner
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
-}
+const STATUS_PENDING = "PENDING"
+const STATUS_RELEASED = "RELEASED"
+const STATUS_REFUNDED = "REFUNDED"
+const VERIFIER_CONFIG_ID = "current"
 
 export function handleRefunded(event: RefundedEvent): void {
-  let entity = new Refunded(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.trustId = event.params.trustId
-  entity.sponsor = event.params.sponsor
-  entity.amount = event.params.amount
+  let trust = Trust.load(event.params.trustId.toString())
+  if (trust == null) {
+    return
+  }
 
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
+  trust.status = STATUS_REFUNDED
+  trust.refundedAt = event.block.timestamp
+  trust.refundedTx = event.transaction.hash
+  trust.save()
 }
 
 export function handleReleased(event: ReleasedEvent): void {
-  let entity = new Released(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.trustId = event.params.trustId
-  entity.beneficiary = event.params.beneficiary
-  entity.amount = event.params.amount
+  let trust = Trust.load(event.params.trustId.toString())
+  if (trust == null) {
+    return
+  }
 
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
+  trust.status = STATUS_RELEASED
+  trust.releasedAt = event.block.timestamp
+  trust.releasedTx = event.transaction.hash
+  trust.save()
 }
 
 export function handleTrustCreated(event: TrustCreatedEvent): void {
-  let entity = new TrustCreated(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.trustId = event.params.trustId
-  entity.sponsor = event.params.sponsor
-  entity.beneficiary = event.params.beneficiary
-  entity.templateId = event.params.templateId
-  entity.token = event.params.token
-  entity.amount = event.params.amount
-  entity.deadline = event.params.deadline
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
+  let trust = new Trust(event.params.trustId.toString())
+  trust.trustId = event.params.trustId
+  trust.sponsor = event.params.sponsor
+  trust.beneficiary = event.params.beneficiary
+  trust.templateId = event.params.templateId
+  trust.token = event.params.token
+  trust.amount = event.params.amount
+  trust.deadline = event.params.deadline
+  trust.status = STATUS_PENDING
+  trust.createdAt = event.block.timestamp
+  trust.createdBlock = event.block.number
+  trust.createdTx = event.transaction.hash
+  trust.save()
 }
 
 export function handleVerifierUpdated(event: VerifierUpdatedEvent): void {
-  let entity = new VerifierUpdated(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.verifier = event.params.verifier
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
+  let config = new VerifierConfig(VERIFIER_CONFIG_ID)
+  config.verifier = event.params.verifier
+  config.updatedAt = event.block.timestamp
+  config.updatedTx = event.transaction.hash
+  config.save()
 }

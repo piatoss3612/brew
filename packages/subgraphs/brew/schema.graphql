@@ -1,50 +1,58 @@
-type OwnershipTransferred @entity(immutable: true) {
+type Trust @entity(immutable: false) {
+  id: ID!
+  trustId: BigInt!
+  sponsor: Bytes!
+  beneficiary: Bytes!
+  token: Bytes!
+  amount: BigInt!
+  deadline: BigInt!
+  templateId: Bytes!
+  status: String!
+  attestationUid: Bytes
+  createdAt: BigInt!
+  createdBlock: BigInt!
+  createdTx: Bytes!
+  releasedAt: BigInt
+  releasedTx: Bytes
+  refundedAt: BigInt
+  refundedTx: Bytes
+  verifiedAt: BigInt
+  verifiedTx: Bytes
+}
+
+type Verification @entity(immutable: true) {
   id: Bytes!
-  previousOwner: Bytes! # address
-  newOwner: Bytes! # address
+  trust: Trust!
+  trustId: BigInt!
+  attestationUid: Bytes!
+  beneficiary: Bytes!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!
 }
 
-type Refunded @entity(immutable: true) {
-  id: Bytes!
-  trustId: BigInt! # uint256
-  sponsor: Bytes! # address
-  amount: BigInt! # uint256
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+type Template @entity(immutable: false) {
+  id: ID!
+  templateId: Bytes!
+  schemaUid: Bytes!
+  expiryWindowSeconds: BigInt!
+  stalenessWindowSeconds: BigInt!
+  registeredAt: BigInt!
+  registeredTx: Bytes!
 }
 
-type Released @entity(immutable: true) {
-  id: Bytes!
-  trustId: BigInt! # uint256
-  beneficiary: Bytes! # address
-  amount: BigInt! # uint256
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+type IssuerPermission @entity(immutable: false) {
+  id: ID!
+  templateId: Bytes!
+  issuer: Bytes!
+  allowed: Boolean!
+  updatedAt: BigInt!
+  updatedTx: Bytes!
 }
 
-type TrustCreated @entity(immutable: true) {
-  id: Bytes!
-  trustId: BigInt! # uint256
-  sponsor: Bytes! # address
-  beneficiary: Bytes! # address
-  templateId: Bytes! # bytes32
-  token: Bytes! # address
-  amount: BigInt! # uint256
-  deadline: BigInt! # uint64
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
-}
-
-type VerifierUpdated @entity(immutable: true) {
-  id: Bytes!
-  verifier: Bytes! # address
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+type VerifierConfig @entity(immutable: false) {
+  id: ID!
+  verifier: Bytes!
+  updatedAt: BigInt!
+  updatedTx: Bytes!
 }

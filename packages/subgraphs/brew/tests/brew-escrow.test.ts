@@ -1,60 +1,64 @@
-import {
-  assert,
-  describe,
-  test,
-  clearStore,
-  beforeAll,
-  afterAll
-} from "matchstick-as/assembly/index"
+import { afterEach, assert, clearStore, describe, test } from "matchstick-as/assembly/index"
 import { Address, BigInt, Bytes } from "@graphprotocol/graph-ts"
-import { OwnershipTransferred } from "../generated/schema"
-import { OwnershipTransferred as OwnershipTransferredEvent } from "../generated/BrewEscrow/BrewEscrow"
-import { handleOwnershipTransferred } from "../src/brew-escrow"
-import { createOwnershipTransferredEvent } from "./brew-escrow-utils"
+import { TrustCreated } from "../generated/BrewEscrow/BrewEscrow"
+import { handleRefunded, handleReleased, handleTrustCreated } from "../src/brew-escrow"
+import { createRefundedEvent, createReleasedEvent, createTrustCreatedEvent } from "./brew-escrow-utils"
 
-// Tests structure (matchstick-as >=0.5.0)
-// https://thegraph.com/docs/en/subgraphs/developing/creating/unit-testing-framework/#tests-structure
+const TRUST_ID = "1"
 
-describe("Describe entity assertions", () => {
-  beforeAll(() => {
-    let previousOwner = Address.fromString(
-      "0x0000000000000000000000000000000000000001"
-    )
-    let newOwner = Address.fromString(
-      "0x0000000000000000000000000000000000000001"
-    )
-    let newOwnershipTransferredEvent = createOwnershipTransferredEvent(
-      previousOwner,
-      newOwner
-    )
-    handleOwnershipTransferred(newOwnershipTransferredEvent)
-  })
-
-  afterAll(() => {
+describe("BrewEscrow mappings", () => {
+  afterEach(() => {
     clearStore()
   })
 
-  // For more test scenarios, see:
-  // https://thegraph.com/docs/en/subgraphs/developing/creating/unit-testing-framework/#write-a-unit-test
+  test("creates a UI trust state from TrustCreated", () => {
+    handleTrustCreated(newTrustCreatedEvent())
 
-  test("OwnershipTransferred created and stored", () => {
-    assert.entityCount("OwnershipTransferred", 1)
+    assert.entityCount("Trust", 1)
+    assert.fieldEquals("Trust", TRUST_ID, "status", "PENDING")
+    assert.fieldEquals("Trust", TRUST_ID, "trustId", TRUST_ID)
+    assert.fieldEquals("Trust", TRUST_ID, "sponsor", "0x0000000000000000000000000000000000000001")
+    assert.fieldEquals("Trust", TRUST_ID, "beneficiary", "0x0000000000000000000000000000000000000002")
+    assert.fieldEquals("Trust", TRUST_ID, "token", "0x0000000000000000000000000000000000000003")
+    assert.fieldEquals("Trust", TRUST_ID, "amount", "1000")
+    assert.fieldEquals("Trust", TRUST_ID, "deadline", "0")
+  })
 
-    // 0xa16081f360e3847006db660bae1c6d1b2e17ec2a is the default address used in newMockEvent() function
-    assert.fieldEquals(
-      "OwnershipTransferred",
-      "0xa16081f360e3847006db660bae1c6d1b2e17ec2a-1",
-      "previousOwner",
-      "0x0000000000000000000000000000000000000001"
+  test("updates trust status on release", () => {
+    handleTrustCreated(newTrustCreatedEvent())
+    handleReleased(
+      createReleasedEvent(
+        BigInt.fromI32(1),
+        Address.fromString("0x0000000000000000000000000000000000000002"),
+        BigInt.fromI32(1000),
+      ),
     )
-    assert.fieldEquals(
-      "OwnershipTransferred",
-      "0xa16081f360e3847006db660bae1c6d1b2e17ec2a-1",
-      "newOwner",
-      "0x0000000000000000000000000000000000000001"
+
+    assert.fieldEquals("Trust", TRUST_ID, "status", "RELEASED")
+  })
+
+  test("updates trust status on refund", () => {
+    handleTrustCreated(newTrustCreatedEvent())
+    handleRefunded(
+      createRefundedEvent(
+        BigInt.fromI32(1),
+        Address.fromString("0x0000000000000000000000000000000000000001"),
+        BigInt.fromI32(1000),
+      ),
     )
 
-    // More assert options:
-    // https://thegraph.com/docs/en/subgraphs/developing/creating/unit-testing-framework/#asserts
+    assert.fieldEquals("Trust", TRUST_ID, "status", "REFUNDED")
   })
 })
+
+function newTrustCreatedEvent(): TrustCreated {
+  return createTrustCreatedEvent(
+    BigInt.fromI32(1),
+    Address.fromString("0x0000000000000000000000000000000000000001"),
+    Address.fromString("0x0000000000000000000000000000000000000002"),
+    Bytes.fromHexString("0xa9d8d2ecfc304dc01f929851a2d337e70f772b9e87c59ef8809f01f29209d251"),
+    Address.fromString("0x0000000000000000000000000000000000000003"),
+    BigInt.fromI32(1000),
+    BigInt.zero(),
+  )
+}

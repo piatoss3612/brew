@@ -16,17 +16,12 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
-        - OwnershipTransferred
-        - Refunded
-        - Released
-        - TrustCreated
-        - VerifierUpdated
+        - Trust
+        - VerifierConfig
       abis:
         - name: BrewEscrow
           file: ./abis/BrewEscrow.json
       eventHandlers:
-        - event: OwnershipTransferred(indexed address,indexed address)
-          handler: handleOwnershipTransferred
         - event: Refunded(indexed uint256,indexed address,uint256)
           handler: handleRefunded
         - event: Released(indexed uint256,indexed address,uint256)
@@ -36,3 +31,30 @@ dataSources:
         - event: VerifierUpdated(indexed address)
           handler: handleVerifierUpdated
       file: ./src/brew-escrow.ts
+  - kind: ethereum
+    name: AttestationVerifier
+    network: sepolia
+    source:
+      address: "0xE8a519bB3B47864c6aB49e97D6338DAF5217aF6a"
+      abi: AttestationVerifier
+      startBlock: 10733285
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - IssuerPermission
+        - Template
+        - Trust
+        - Verification
+      abis:
+        - name: AttestationVerifier
+          file: ./abis/AttestationVerifier.json
+      eventHandlers:
+        - event: IssuerAllowlisted(indexed bytes32,indexed address,bool)
+          handler: handleIssuerAllowlisted
+        - event: TemplateRegistered(indexed bytes32,bytes32,uint64,uint64)
+          handler: handleTemplateRegistered
+        - event: Verified(indexed uint256,indexed bytes32,address)
+          handler: handleVerified
+      file: ./src/attestation-verifier.ts
