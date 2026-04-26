@@ -23,7 +23,10 @@ contract DeployDemoUSDC is Script {
 
     function run() external returns (DemoUSDC token) {
         address deployer = _keystoreSigner();
-        address recipient = vm.envAddress("DEMO_TOKEN_RECIPIENT");
+        address recipient = _optionalAddress("DEMO_TOKEN_RECIPIENT");
+        if (recipient == address(0)) {
+            recipient = deployer;
+        }
 
         vm.startBroadcast();
         token = new DemoUSDC();
@@ -41,5 +44,22 @@ contract DeployDemoUSDC is Script {
         require(wallets.length == 1, "expected one keystore signer");
 
         return wallets[0];
+    }
+
+    function _optionalAddress(string memory name) internal view returns (address) {
+        if (!vm.envExists(name)) {
+            return address(0);
+        }
+
+        string memory raw = vm.envString(name);
+        bytes memory value = bytes(raw);
+        if (value.length == 0 || value.length == 2) {
+            return address(0);
+        }
+        if (value.length < 2 || value[0] != 0x30 || (value[1] != 0x78 && value[1] != 0x58)) {
+            return address(0);
+        }
+
+        return vm.parseAddress(raw);
     }
 }

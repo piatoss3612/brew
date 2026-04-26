@@ -19,6 +19,12 @@ library BrewConfig {
     string internal constant FELLOWSHIP_SCHEMA =
         "uint8 quarter, string report_uri, bytes32 report_hash, string program_name";
 
+    bytes32 internal constant WORKPLACE_SCHEMA_UID = 0x01a3629d02136181035c01693fc6fa5e868061456b8865f56ba9c51a4b36b5c1;
+    bytes32 internal constant DEGREE_SCHEMA_UID = 0xd9d697d74ca8ad8f0ee967b724eccadee7695b8f9a12f0ddb580e6aa6bbb3325;
+    bytes32 internal constant DAO_GRANT_SCHEMA_UID = 0x6429c150638a057d5d4b034e6530c9f1b5f300fc96edc0461d25effd8bfda9d5;
+    bytes32 internal constant FELLOWSHIP_SCHEMA_UID =
+        0xcd32f560f8ee50bc49024b8d847d4dabb9bf3672d88c6a64207e83dfde4f6a6a;
+
     uint64 internal constant WORKPLACE_EXPIRY_WINDOW = 7_776_000;
     uint64 internal constant WORKPLACE_STALENESS_WINDOW = 2_592_000;
 
@@ -32,19 +38,19 @@ library BrewConfig {
     uint64 internal constant FELLOWSHIP_STALENESS_WINDOW = 1_209_600;
 
     function workplaceSchemaUid() internal pure returns (bytes32) {
-        return schemaUid(WORKPLACE_SCHEMA);
+        return WORKPLACE_SCHEMA_UID;
     }
 
     function degreeSchemaUid() internal pure returns (bytes32) {
-        return schemaUid(DEGREE_SCHEMA);
+        return DEGREE_SCHEMA_UID;
     }
 
     function daoGrantSchemaUid() internal pure returns (bytes32) {
-        return schemaUid(DAO_GRANT_SCHEMA);
+        return DAO_GRANT_SCHEMA_UID;
     }
 
     function fellowshipSchemaUid() internal pure returns (bytes32) {
-        return schemaUid(FELLOWSHIP_SCHEMA);
+        return FELLOWSHIP_SCHEMA_UID;
     }
 
     function schemaUid(string memory schema) internal pure returns (bytes32) {

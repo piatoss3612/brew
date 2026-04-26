@@ -77,7 +77,7 @@ forge script script/RegisterBrewSchemas.s.sol:RegisterBrewSchemas \
 ```
 
 The schema UIDs are deterministic, so the configure script derives them from
-`BrewConfig` instead of requiring `.env` copy/paste.
+the registered Sepolia UIDs stored in `BrewConfig`.
 
 result:
 
@@ -134,8 +134,32 @@ forge script script/DeployDemoUSDC.s.sol:DeployDemoUSDC \
   --rpc-url sepolia \
   --account "$BREW_DEPLOYER_ACCOUNT" \
   --broadcast \
-  -- slow \
+  --slow \
   --verify
 ```
 
 Copy the printed `DEMO_TOKEN_ADDRESS` into `.env`.
+
+### 5. Demo Token Happy Path Simulation
+
+Do not pass `--broadcast`; this simulates the full flow on a Sepolia fork.
+
+logs for the full process:
+
+- mint demo token
+- approve escrow
+- create trust
+- issue EAS attestation
+- verify and release
+
+```sh
+forge script script/SimulateBrewHappyPath.s.sol:SimulateBrewHappyPath \
+  --rpc-url sepolia \
+  --account "$BREW_DEPLOYER_ACCOUNT"
+```
+
+Expected final marker:
+
+```
+BREW_HAPPY_PATH_SIMULATED=true
+```
