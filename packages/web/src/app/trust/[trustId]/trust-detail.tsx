@@ -2,7 +2,15 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { isAddress, type Address, type Hex } from 'viem';
+import {
+  decodeEventLog,
+  encodeAbiParameters,
+  isAddress,
+  keccak256,
+  toHex,
+  type Address,
+  type Hex,
+} from 'viem';
 import {
   useAccount,
   useChainId,
@@ -16,9 +24,13 @@ import { sepolia } from 'wagmi/chains';
 import {
   BREW_ESCROW_ADDRESS,
   BREW_VERIFIER_ADDRESS,
+  EAS_ADDRESS,
+  EAS_SCHEMA_REGISTRY_ADDRESS,
   attestationVerifierAbi,
   brewEscrowAbi,
+  easAbi,
   erc20Abi,
+  schemaRegistryAbi,
 } from '../../../contracts';
 import {
   formatTimestamp,
@@ -34,13 +46,178 @@ import {
 } from '../../../format';
 import { fetchBrewStatus } from '../../../subgraph';
 
-type ActionStep = 'idle' | 'switching' | 'verifying' | 'refunding' | 'confirmed' | 'error';
-type ActiveAction = 'release' | 'refund';
+type ActionStep =
+  | 'idle'
+  | 'switching'
+  | 'attesting'
+  | 'verifying'
+  | 'refunding'
+  | 'confirmed'
+  | 'error';
+type ActiveAction = 'attest' | 'release' | 'refund';
+
+type SchemaRecord = {
+  uid: string;
+  resolver: string;
+  revocable: boolean;
+  schema: string;
+};
+
+type SchemaField = {
+  type: string;
+  name: string;
+};
 
 const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as Hex;
+const DEFAULT_FIELD_VALUES: Record<string, string> = {
+  conferral_date: '1704067200',
+  deliverable_hash: keccak256(toHex('brew-demo')),
+  deliverable_uri: 'ipfs://brew-demo',
+  degree_type: 'Bachelor',
+  employer: 'Brew Labs',
+  milestone_index: '1',
+  name: 'Demo Recipient',
+  ope_id: '001234',
+  program_name: 'Brew Fellowship',
+  quarter: '1',
+  report_hash: keccak256(toHex('brew-report')),
+  report_uri: 'ipfs://brew-report',
+  start_date: '1704067200',
+  transcript_hash: keccak256(toHex('brew-transcript')),
+  university: 'Demo University',
+  verification_source: 'issuer-demo',
+  verification_timestamp: '1704067200',
+};
 
 function isBytes32(value: string): value is Hex {
   return BYTES32_PATTERN.test(value);
+}
+
+function readSchemaRecord(value: unknown): SchemaRecord | null {
+  if (!value || typeof value !== 'object') return null;
+
+  if (
+    'uid' in value &&
+    'resolver' in value &&
+    'revocable' in value &&
+    'schema' in value &&
+    typeof value.uid === 'string' &&
+    typeof value.resolver === 'string' &&
+    typeof value.revocable === 'boolean' &&
+    typeof value.schema === 'string'
+  ) {
+    return {
+      uid: value.uid,
+      resolver: value.resolver,
+      revocable: value.revocable,
+      schema: value.schema,
+    };
+  }
+
+  if (Array.isArray(value)) {
+    const [uid, resolver, revocable, schema] = value;
+
+    if (
+      typeof uid === 'string' &&
+      typeof resolver === 'string' &&
+      typeof revocable === 'boolean' &&
+      typeof schema === 'string'
+    ) {
+      return { uid, resolver, revocable, schema };
+    }
+  }
+
+  return null;
+}
+
+function parseSchemaFields(schema: string): SchemaField[] {
+  return schema
+    .split(',')
+    .map((field) => field.trim())
+    .filter(Boolean)
+    .map((field) => {
+      const [type, ...nameParts] = field.split(/\s+/);
+      return {
+        type: type ?? '',
+        name: nameParts.join(' ') || field,
+      };
+    });
+}
+
+function defaultFieldValue(field: SchemaField) {
+  return DEFAULT_FIELD_VALUES[field.name] ?? (field.type.startsWith('uint') ? '1' : '');
+}
+
+function parseSchemaFieldValue(field: SchemaField, rawValue: string) {
+  const value = rawValue.trim();
+
+  if (field.type === 'string') return value;
+  if (field.type === 'address') {
+    if (!isAddress(value)) throw new Error(`${field.name} must be an address`);
+    return value;
+  }
+  if (field.type === 'bytes32') {
+    if (!isBytes32(value)) throw new Error(`${field.name} must be bytes32`);
+    return value;
+  }
+  if (field.type === 'bool') {
+    if (value !== 'true' && value !== 'false') {
+      throw new Error(`${field.name} must be true or false`);
+    }
+    return value === 'true';
+  }
+  if (field.type.startsWith('uint')) {
+    if (!/^\d+$/.test(value)) throw new Error(`${field.name} must be an unsigned integer`);
+    return BigInt(value);
+  }
+
+  throw new Error(`Unsupported schema field type: ${field.type}`);
+}
+
+function encodeAttestationData(fields: SchemaField[], values: Record<string, string>) {
+  const parameters = fields.map((field) => ({
+    name: field.name,
+    type: field.type,
+  }));
+  const parsedValues = fields.map((field) =>
+    parseSchemaFieldValue(field, values[field.name] ?? defaultFieldValue(field)),
+  );
+
+  return encodeAbiParameters(parameters, parsedValues);
+}
+
+function readAttestationUid(
+  logs: Array<{
+    address: Address;
+    data: Hex;
+    topics: [Hex, ...Hex[]] | [];
+  }>,
+) {
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== EAS_ADDRESS.toLowerCase()) continue;
+
+    try {
+      const decoded = decodeEventLog({
+        abi: easAbi,
+        data: log.data,
+        topics: log.topics,
+      });
+
+      if (
+        decoded.eventName === 'Attested' &&
+        decoded.args &&
+        'uid' in decoded.args &&
+        typeof decoded.args.uid === 'string'
+      ) {
+        return decoded.args.uid as Hex;
+      }
+    } catch {
+      // Ignore unrelated EAS logs.
+    }
+  }
+
+  return null;
 }
 
 function terminalStatus(status: string) {
@@ -66,6 +243,9 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const queryClient = useQueryClient();
 
   const [attestationUid, setAttestationUid] = useState('');
+  const [attestationFieldValues, setAttestationFieldValues] = useState<Record<string, string>>({});
+  const [attestationHash, setAttestationHash] = useState<string | null>(null);
+  const [createdAttestationUid, setCreatedAttestationUid] = useState<string | null>(null);
   const [releaseHash, setReleaseHash] = useState<string | null>(null);
   const [refundHash, setRefundHash] = useState<string | null>(null);
   const [step, setStep] = useState<ActionStep>('idle');
@@ -90,6 +270,10 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const trust = useMemo(
     () => statusQuery.data?.trusts.find((item) => item.trustId === trustId),
     [statusQuery.data?.trusts, trustId],
+  );
+  const template = useMemo(
+    () => statusQuery.data?.templates.find((item) => item.templateId === trust?.templateId),
+    [statusQuery.data?.templates, trust?.templateId],
   );
 
   const tokenAddress = trust && isAddress(trust.token) ? (trust.token as Address) : undefined;
@@ -116,9 +300,54 @@ export function TrustDetail({ trustId }: { trustId: string }) {
       enabled: Boolean(tokenAddress),
     },
   });
+  const schemaUid = template?.schemaUid;
+  const schemaReads = useReadContracts({
+    contracts: schemaUid && isBytes32(schemaUid)
+      ? [
+          {
+            address: EAS_SCHEMA_REGISTRY_ADDRESS,
+            abi: schemaRegistryAbi,
+            functionName: 'getSchema',
+            chainId: sepolia.id,
+            args: [schemaUid],
+          },
+        ]
+      : [],
+    query: {
+      enabled: Boolean(schemaUid && isBytes32(schemaUid)),
+    },
+  });
+  const issuerReads = useReadContracts({
+    contracts: trust && address && isBytes32(trust.templateId)
+      ? [
+          {
+            address: BREW_VERIFIER_ADDRESS,
+            abi: attestationVerifierAbi,
+            functionName: 'isIssuerAllowed',
+            chainId: sepolia.id,
+            args: [trust.templateId, address],
+          },
+        ]
+      : [],
+    query: {
+      enabled: Boolean(trust && address && isBytes32(trust.templateId)),
+    },
+  });
 
   const tokenSymbol = readString(tokenReads.data?.[0]?.result, 'TOKEN');
   const tokenDecimals = readDecimals(tokenReads.data?.[1]?.result);
+  const schemaResult = schemaReads.data?.[0]?.result;
+  const schemaRecord = useMemo(() => readSchemaRecord(schemaResult), [schemaResult]);
+  const schemaFields = useMemo(
+    () => (schemaRecord ? parseSchemaFields(schemaRecord.schema) : []),
+    [schemaRecord],
+  );
+  const issuerAllowed = issuerReads.data?.[0]?.result === true;
+  const attestationExpiryWindow = Number(template?.expiryWindowSeconds ?? '0');
+  const attestationExpirationSeconds =
+    attestationExpiryWindow > 0
+      ? BigInt(nowSeconds + Math.min(attestationExpiryWindow, 7 * 24 * 60 * 60))
+      : BigInt(0);
   const trimmedAttestationUid = attestationUid.trim();
   const attestationReady = isBytes32(trimmedAttestationUid);
   const needsNetworkSwitch = isConnected && chainId !== sepolia.id;
@@ -127,6 +356,11 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const isBeneficiary = isSameAddress(trust?.beneficiary ?? '', address);
   const hasRefundDeadline = deadlineSeconds > BigInt(0);
   const refundReady = hasRefundDeadline && BigInt(nowSeconds) >= deadlineSeconds;
+  const actionBusy =
+    step === 'switching' ||
+    step === 'attesting' ||
+    step === 'verifying' ||
+    step === 'refunding';
   const canRelease =
     Boolean(trust) &&
     trust?.status === 'PENDING' &&
@@ -135,10 +369,19 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     Boolean(publicClient) &&
     Boolean(beneficiaryAddress) &&
     attestationReady &&
-    step !== 'switching' &&
-    step !== 'verifying' &&
-    step !== 'refunding' &&
-    step !== 'confirmed';
+    !actionBusy &&
+    !(activeAction === 'release' && step === 'confirmed');
+  const canAttest =
+    Boolean(trust) &&
+    trust?.status === 'PENDING' &&
+    isConnected &&
+    issuerAllowed &&
+    Boolean(publicClient) &&
+    Boolean(beneficiaryAddress) &&
+    Boolean(schemaRecord) &&
+    schemaFields.length > 0 &&
+    !createdAttestationUid &&
+    !actionBusy;
   const canRefund =
     Boolean(trust) &&
     trust?.status === 'PENDING' &&
@@ -146,10 +389,64 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     isSponsor &&
     Boolean(publicClient) &&
     refundReady &&
-    step !== 'switching' &&
-    step !== 'verifying' &&
-    step !== 'refunding' &&
-    step !== 'confirmed';
+    !actionBusy &&
+    !(activeAction === 'refund' && step === 'confirmed');
+
+  async function issueAttestation() {
+    if (!trust || !beneficiaryAddress || !publicClient || !schemaUid || !isBytes32(schemaUid)) {
+      return;
+    }
+
+    setErrorMessage(null);
+    setAttestationHash(null);
+    setReleaseHash(null);
+    setRefundHash(null);
+    setActiveAction('attest');
+
+    try {
+      if (chainId !== sepolia.id) {
+        setStep('switching');
+        await switchChainAsync({ chainId: sepolia.id });
+      }
+
+      const encodedData = encodeAttestationData(schemaFields, attestationFieldValues);
+
+      setStep('attesting');
+      const nextAttestationHash = await writeContractAsync({
+        address: EAS_ADDRESS,
+        abi: easAbi,
+        functionName: 'attest',
+        chainId: sepolia.id,
+        args: [
+          {
+            schema: schemaUid,
+            data: {
+              recipient: beneficiaryAddress,
+              expirationTime: attestationExpirationSeconds,
+              revocable: true,
+              refUID: ZERO_BYTES32,
+              data: encodedData,
+              value: BigInt(0),
+            },
+          },
+        ],
+      });
+      setAttestationHash(nextAttestationHash);
+
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: nextAttestationHash });
+      const nextAttestationUid = readAttestationUid(receipt.logs);
+      if (!nextAttestationUid) {
+        throw new Error('Attestation confirmed, but UID could not be decoded from the receipt');
+      }
+
+      setCreatedAttestationUid(nextAttestationUid);
+      setAttestationUid(nextAttestationUid);
+      setStep('confirmed');
+    } catch (error) {
+      setStep('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Attestation transaction failed');
+    }
+  }
 
   async function verifyAndRelease() {
     if (!trust || !beneficiaryAddress || !isBytes32(trimmedAttestationUid) || !publicClient) {
@@ -158,6 +455,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
 
     setErrorMessage(null);
     setReleaseHash(null);
+    setAttestationHash(null);
     setRefundHash(null);
     setActiveAction('release');
 
@@ -192,6 +490,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     }
 
     setErrorMessage(null);
+    setAttestationHash(null);
     setReleaseHash(null);
     setRefundHash(null);
     setActiveAction('refund');
@@ -292,6 +591,122 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             <strong>{formatTimestamp(trust.verifiedAt)}</strong>
           </div>
         </div>
+      </section>
+
+      <section className="sponsor-panel" aria-label="Issue attestation">
+        <div className="section-heading">
+          <div>
+            <span className="data-label">Issuer</span>
+            <h2>{isTerminal ? 'Attestation closed' : 'Issue attestation'}</h2>
+          </div>
+          {createdAttestationUid ? <strong>{shortHash(createdAttestationUid)}</strong> : null}
+        </div>
+
+        {!isTerminal && issuerAllowed ? (
+          <>
+            <div className="trust-summary">
+              <div>
+                <span className="data-label">Recipient</span>
+                <strong title={trust.beneficiary}>{shortenAddress(trust.beneficiary)}</strong>
+              </div>
+              <div>
+                <span className="data-label">Schema UID</span>
+                <strong title={schemaUid}>{schemaUid ? shortHash(schemaUid) : '-'}</strong>
+              </div>
+              <div>
+                <span className="data-label">Expiration</span>
+                <strong>
+                  {attestationExpirationSeconds === BigInt(0)
+                    ? 'None'
+                    : formatTimestamp(attestationExpirationSeconds.toString())}
+                </strong>
+              </div>
+              <div>
+                <span className="data-label">Issuer permission</span>
+                <strong>Allowed</strong>
+              </div>
+            </div>
+
+            <div className="form-grid input-panel">
+              {schemaFields.map((field) => (
+                <label key={`${field.type}-${field.name}`}>
+                  {field.name}
+                  {field.type === 'bool' ? (
+                    <select
+                      value={attestationFieldValues[field.name] ?? defaultFieldValue(field)}
+                      onChange={(event) => {
+                        setAttestationFieldValues((current) => ({
+                          ...current,
+                          [field.name]: event.target.value,
+                        }));
+                        setStep('idle');
+                        setActiveAction(null);
+                        setAttestationHash(null);
+                        setCreatedAttestationUid(null);
+                        setErrorMessage(null);
+                      }}
+                    >
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  ) : (
+                    <input
+                      autoComplete="off"
+                      inputMode={field.type.startsWith('uint') ? 'numeric' : 'text'}
+                      placeholder={field.type}
+                      value={attestationFieldValues[field.name] ?? defaultFieldValue(field)}
+                      onChange={(event) => {
+                        setAttestationFieldValues((current) => ({
+                          ...current,
+                          [field.name]: event.target.value,
+                        }));
+                        setStep('idle');
+                        setActiveAction(null);
+                        setAttestationHash(null);
+                        setCreatedAttestationUid(null);
+                        setErrorMessage(null);
+                      }}
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+
+            <button className="primary-action" disabled={!canAttest} onClick={issueAttestation}>
+              {needsNetworkSwitch ? 'Switch and attest' : 'Issue attestation'}
+            </button>
+          </>
+        ) : isTerminal ? (
+          <p className="form-note">Status: {statusLabels[trust.status]}</p>
+        ) : (
+          <p className="form-note">Connect an allowlisted issuer wallet to issue an attestation.</p>
+        )}
+
+        {!isConnected ? <p className="form-note">Connect a wallet to view issuer actions.</p> : null}
+        {isConnected && issuerReads.isFetched && !issuerAllowed && !isTerminal ? (
+          <p className="form-note">Connected wallet is not allowlisted for this template.</p>
+        ) : null}
+        {schemaReads.isLoading ? <p className="form-note">Reading EAS schema fields.</p> : null}
+        {schemaReads.error instanceof Error ? (
+          <p className="data-error">{schemaReads.error.message}</p>
+        ) : null}
+        {issuerReads.error instanceof Error ? (
+          <p className="data-error">{issuerReads.error.message}</p>
+        ) : null}
+        {attestationHash ? (
+          <a className="tx-link" href={txLink(attestationHash)} target="_blank" rel="noreferrer">
+            Attestation tx {shortHash(attestationHash)}
+          </a>
+        ) : null}
+        {createdAttestationUid ? (
+          <p className="form-note">Attestation UID copied into the release form.</p>
+        ) : null}
+        {activeAction === 'attest' && step !== 'idle' ? (
+          <p className="form-note">Status: {step}</p>
+        ) : null}
+        {activeAction === 'attest' && errorMessage ? (
+          <p className="data-error">{errorMessage}</p>
+        ) : null}
       </section>
 
       <section className="sponsor-panel" aria-label="Release trust">

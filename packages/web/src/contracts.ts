@@ -9,6 +9,9 @@ export const BREW_VERIFIER_ADDRESS =
 export const BREW_TOKEN_ADDRESS =
   '0xee8f180727440e8068ec927ba181794a63b43741' as Address;
 
+export const EAS_ADDRESS =
+  '0xC2679fBD37d54388Ce493F1DB75320D236e1815e' as Address;
+
 export const EAS_SCHEMA_REGISTRY_ADDRESS =
   '0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0' as Address;
 
@@ -110,6 +113,16 @@ export const brewEscrowAbi = [
 export const attestationVerifierAbi = [
   {
     type: 'function',
+    name: 'isIssuerAllowed',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'templateId', type: 'bytes32' },
+      { name: 'issuer', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
     name: 'verifyAndRelease',
     stateMutability: 'nonpayable',
     inputs: [
@@ -118,5 +131,45 @@ export const attestationVerifierAbi = [
       { name: 'attestationUid', type: 'bytes32' },
     ],
     outputs: [],
+  },
+] as const;
+
+export const easAbi = [
+  {
+    type: 'function',
+    name: 'attest',
+    stateMutability: 'payable',
+    inputs: [
+      {
+        name: 'request',
+        type: 'tuple',
+        components: [
+          { name: 'schema', type: 'bytes32' },
+          {
+            name: 'data',
+            type: 'tuple',
+            components: [
+              { name: 'recipient', type: 'address' },
+              { name: 'expirationTime', type: 'uint64' },
+              { name: 'revocable', type: 'bool' },
+              { name: 'refUID', type: 'bytes32' },
+              { name: 'data', type: 'bytes' },
+              { name: 'value', type: 'uint256' },
+            ],
+          },
+        ],
+      },
+    ],
+    outputs: [{ name: '', type: 'bytes32' }],
+  },
+  {
+    type: 'event',
+    name: 'Attested',
+    inputs: [
+      { name: 'recipient', type: 'address', indexed: true },
+      { name: 'attester', type: 'address', indexed: true },
+      { name: 'uid', type: 'bytes32', indexed: false },
+      { name: 'schemaUID', type: 'bytes32', indexed: true },
+    ],
   },
 ] as const;
