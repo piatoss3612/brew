@@ -1,0 +1,38 @@
+specVersion: 1.3.0
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: BrewEscrow
+    network: sepolia
+    source:
+      address: "0xED5160554F93138c7f537bC1C99BFa475c97E622"
+      abi: BrewEscrow
+      startBlock: 10733284
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - OwnershipTransferred
+        - Refunded
+        - Released
+        - TrustCreated
+        - VerifierUpdated
+      abis:
+        - name: BrewEscrow
+          file: ./abis/BrewEscrow.json
+      eventHandlers:
+        - event: OwnershipTransferred(indexed address,indexed address)
+          handler: handleOwnershipTransferred
+        - event: Refunded(indexed uint256,indexed address,uint256)
+          handler: handleRefunded
+        - event: Released(indexed uint256,indexed address,uint256)
+          handler: handleReleased
+        - event: TrustCreated(indexed uint256,indexed address,indexed address,bytes32,address,uint256,uint64)
+          handler: handleTrustCreated
+        - event: VerifierUpdated(indexed address)
+          handler: handleVerifierUpdated
+      file: ./src/brew-escrow.ts
