@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { ConnectWalletButton } from './connect-wallet-button';
 import { OverviewToast } from './overview-toast';
+import { TrustDirectory } from './trust-directory';
 import { TrustWorkflow } from './trust-workflow';
 
 type HomeProps = {
@@ -38,6 +39,7 @@ export default async function Home({ searchParams }: HomeProps) {
       </header>
 
       <TrustWorkflow />
+      <TrustDirectory />
     </main>
   );
 }

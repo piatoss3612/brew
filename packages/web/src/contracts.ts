@@ -3,6 +3,9 @@ import type { Address } from 'viem';
 export const BREW_ESCROW_ADDRESS =
   '0xED5160554F93138c7f537bC1C99BFa475c97E622' as Address;
 
+export const BREW_VERIFIER_ADDRESS =
+  '0xE8a519bB3B47864c6aB49e97D6338DAF5217aF6a' as Address;
+
 export const BREW_TOKEN_ADDRESS =
   '0xee8f180727440e8068ec927ba181794a63b43741' as Address;
 
@@ -94,5 +97,19 @@ export const brewEscrowAbi = [
       { name: 'templateId', type: 'bytes32' },
     ],
     outputs: [{ name: 'trustId', type: 'uint256' }],
+  },
+] as const;
+
+export const attestationVerifierAbi = [
+  {
+    type: 'function',
+    name: 'verifyAndRelease',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'trustId', type: 'uint256' },
+      { name: 'beneficiary', type: 'address' },
+      { name: 'attestationUid', type: 'bytes32' },
+    ],
+    outputs: [],
   },
 ] as const;
