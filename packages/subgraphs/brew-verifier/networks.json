@@ -1,8 +1,0 @@
-{
-  "sepolia": {
-    "AttestationVerifier": {
-      "address": "0xE8a519bB3B47864c6aB49e97D6338DAF5217aF6a",
-      "startBlock": 10733285
-    }
-  }
-}

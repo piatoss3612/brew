@@ -1,8 +1,0 @@
-{
-  "sepolia": {
-    "BrewEscrow": {
-      "address": "0xED5160554F93138c7f537bC1C99BFa475c97E622",
-      "startBlock": 10733284
-    }
-  }
-}
