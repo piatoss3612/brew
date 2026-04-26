@@ -98,6 +98,13 @@ export const brewEscrowAbi = [
     ],
     outputs: [{ name: 'trustId', type: 'uint256' }],
   },
+  {
+    type: 'function',
+    name: 'refund',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'trustId', type: 'uint256' }],
+    outputs: [],
+  },
 ] as const;
 
 export const attestationVerifierAbi = [
