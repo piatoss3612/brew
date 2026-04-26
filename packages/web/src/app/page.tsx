@@ -1,19 +1,5 @@
 import { ConnectWalletButton } from './connect-wallet-button';
-
-const workflowSteps = [
-  {
-    label: 'Sponsor',
-    state: 'Funded',
-  },
-  {
-    label: 'Verify',
-    state: 'Attestation pending',
-  },
-  {
-    label: 'Release',
-    state: 'Awaiting verification',
-  },
-];
+import { TrustWorkflow } from './trust-workflow';
 
 export default function Home() {
   return (
@@ -26,15 +12,7 @@ export default function Home() {
         <ConnectWalletButton />
       </header>
 
-      <section className="workflow" aria-label="Trust workflow">
-        {workflowSteps.map((step, index) => (
-          <div className="workflow-row" key={step.label}>
-            <span className="workflow-index">{String(index + 1).padStart(2, '0')}</span>
-            <strong>{step.label}</strong>
-            <span className="workflow-state">{step.state}</span>
-          </div>
-        ))}
-      </section>
+      <TrustWorkflow />
     </main>
   );
 }

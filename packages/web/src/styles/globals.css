@@ -103,10 +103,48 @@ h1 {
   justify-self: end;
 }
 
+.data-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.data-panel > div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(20, 17, 15, 0.12);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.data-label {
+  color: #706a61;
+  font-size: 0.82rem;
+}
+
+.data-panel strong {
+  overflow: hidden;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-error {
+  margin-top: 16px;
+  color: #8f2f18;
+  font-size: 0.92rem;
+}
+
 @media (max-width: 760px) {
   .top-bar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .data-panel {
+    grid-template-columns: 1fr;
   }
 
   .workflow-row {
