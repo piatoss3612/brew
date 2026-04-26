@@ -3,13 +3,14 @@ export const BREW_SUBGRAPH_URL =
 
 const BREW_STATUS_QUERY = `
   query BrewStatus {
-    trusts(first: 5, orderBy: createdAt, orderDirection: desc) {
+    trusts(first: 20, orderBy: createdAt, orderDirection: desc) {
       id
       trustId
       sponsor
       beneficiary
       token
       amount
+      deadline
       status
       templateId
       createdAt
@@ -47,6 +48,7 @@ export type BrewTrust = {
   beneficiary: string;
   token: string;
   amount: string;
+  deadline: string;
   status: TrustStatus;
   templateId: string;
   createdAt: string;

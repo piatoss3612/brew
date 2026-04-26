@@ -1,46 +1,13 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { formatUnits, isAddress, type Address } from 'viem';
+import { isAddress, type Address } from 'viem';
 import { useReadContracts } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
 
 import { erc20Abi } from '../contracts';
-import { fetchBrewStatus, type BrewTrust, type TrustStatus } from '../subgraph';
-
-const statusLabels: Record<TrustStatus, string> = {
-  PENDING: 'Pending',
-  RELEASED: 'Released',
-  REFUNDED: 'Refunded',
-};
-
-function shortenAddress(value: string) {
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
-}
-
-function readString(value: unknown, fallback: string) {
-  return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
-}
-
-function readDecimals(value: unknown) {
-  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value;
-  if (typeof value === 'bigint' && value >= BigInt(0) && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
-    return Number(value);
-  }
-
-  return null;
-}
-
-function formatTrustAmount(amount: string, decimals: number | null, symbol: string, loading: boolean) {
-  if (loading) return 'Loading';
-  if (decimals === null) return `${amount} raw`;
-
-  try {
-    return `${formatUnits(BigInt(amount), decimals)} ${symbol}`;
-  } catch {
-    return `${amount} raw`;
-  }
-}
+import { formatTrustAmount, readDecimals, readString, shortenAddress, statusLabels } from '../format';
+import { fetchBrewStatus, type BrewTrust } from '../subgraph';
 
 function buildWorkflowSteps(trust?: BrewTrust) {
   const hasTrust = Boolean(trust);

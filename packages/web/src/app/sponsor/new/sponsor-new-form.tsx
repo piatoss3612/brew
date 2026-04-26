@@ -124,6 +124,27 @@ function formatWindow(seconds: string) {
   return `${days}d`;
 }
 
+function formatLocalDateTimeInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function formatDeadline(seconds: bigint) {
+  if (seconds === ZERO) return 'No refund';
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(Number(seconds) * 1000));
+}
+
 function getTemplateLabel(template: BrewTemplate) {
   const label = TEMPLATE_LABELS_BY_SCHEMA_UID[template.schemaUid.toLowerCase()] ?? 'Template';
   return `${label} / ${shortHash(template.templateId)}`;
@@ -220,6 +241,11 @@ export function SponsorNewForm() {
   const [beneficiary, setBeneficiary] = useState('');
   const [tokenAddressInput, setTokenAddressInput] = useState<string>(BREW_TOKEN_ADDRESS);
   const [amount, setAmount] = useState('10');
+  const [deadlineInput, setDeadlineInput] = useState('');
+  const [initialNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+  const [minDeadlineInput] = useState(() =>
+    formatLocalDateTimeInput(new Date(Date.now() + 60_000)),
+  );
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [step, setStep] = useState<StepState>('idle');
   const [approveHash, setApproveHash] = useState<string | null>(null);
@@ -312,6 +338,17 @@ export function SponsorNewForm() {
   const tokenMetadataFailed = Boolean(
     tokenAddress && metadataReads.isFetched && tokenDecimals === null,
   );
+  const deadlineSeconds = useMemo(() => {
+    if (!deadlineInput) return ZERO;
+
+    const timestamp = new Date(deadlineInput).getTime();
+    if (!Number.isFinite(timestamp)) return null;
+
+    return BigInt(Math.floor(timestamp / 1000));
+  }, [deadlineInput]);
+  const deadlineReady =
+    deadlineSeconds !== null &&
+    (deadlineSeconds === ZERO || deadlineSeconds > BigInt(initialNowSeconds));
 
   const amountUnits = useMemo(() => {
     if (tokenDecimals === null) return ZERO;
@@ -363,6 +400,7 @@ export function SponsorNewForm() {
     templateReady &&
     Boolean(resolvedBeneficiary) &&
     amountUnits > ZERO &&
+    deadlineReady &&
     hasEnoughBalance &&
     step !== 'switching' &&
     step !== 'approving' &&
@@ -429,7 +467,7 @@ export function SponsorNewForm() {
           resolvedBeneficiary,
           tokenAddress,
           amountUnits,
-          BigInt(0),
+          deadlineSeconds ?? ZERO,
           resolvedTemplateId,
         ],
       });
@@ -506,6 +544,21 @@ export function SponsorNewForm() {
             <span className="amount-unit">{tokenSymbol}</span>
           </span>
         </label>
+        <label className="wide-field">
+          Refund deadline
+          <input
+            min={minDeadlineInput}
+            type="datetime-local"
+            value={deadlineInput}
+            onChange={(event) => {
+              setDeadlineInput(event.target.value);
+              setStep('idle');
+              setApproveHash(null);
+              setCreateHash(null);
+              setErrorMessage(null);
+            }}
+          />
+        </label>
       </div>
 
       <div className="trust-summary">
@@ -554,6 +607,10 @@ export function SponsorNewForm() {
         <div>
           <span className="data-label">Expiry</span>
           <strong>{selectedTemplate ? formatWindow(selectedTemplate.expiryWindowSeconds) : '-'}</strong>
+        </div>
+        <div>
+          <span className="data-label">Refund deadline</span>
+          <strong>{deadlineSeconds !== null ? formatDeadline(deadlineSeconds) : 'Invalid'}</strong>
         </div>
         <div>
           <span className="data-label">Balance</span>
@@ -658,6 +715,9 @@ export function SponsorNewForm() {
       ) : null}
       {isConnected && balanceKnown && !tokenBalanceLoading && !hasEnoughBalance ? (
         <p className="form-note">Connected wallet does not have enough {tokenSymbol}.</p>
+      ) : null}
+      {!deadlineReady ? (
+        <p className="form-note">Refund deadline must be in the future.</p>
       ) : null}
       {step !== 'idle' ? <p className="form-note">Status: {step}</p> : null}
       {approveHash ? (
