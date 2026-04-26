@@ -1,22 +1,13 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { isAddress, type Address } from 'viem';
+import { useReadContracts } from 'wagmi';
+import { sepolia } from 'wagmi/chains';
 
-import { fetchBrewStatus, type BrewTrust, type TrustStatus } from '../subgraph';
-
-const statusLabels: Record<TrustStatus, string> = {
-  PENDING: 'Pending',
-  RELEASED: 'Released',
-  REFUNDED: 'Refunded',
-};
-
-function shortenAddress(value: string) {
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
-}
-
-function formatBrewAmount(amount: string) {
-  return `${(Number(amount) / 1_000_000).toFixed(2)} BREW`;
-}
+import { erc20Abi } from '../contracts';
+import { formatTrustAmount, readDecimals, readString, shortenAddress, statusLabels } from '../format';
+import { fetchBrewStatus, type BrewTrust } from '../subgraph';
 
 function buildWorkflowSteps(trust?: BrewTrust) {
   const hasTrust = Boolean(trust);
@@ -54,6 +45,31 @@ export function TrustWorkflow() {
   });
 
   const latestTrust = data?.trusts[0];
+  const latestTokenAddress =
+    latestTrust && isAddress(latestTrust.token) ? (latestTrust.token as Address) : undefined;
+  const tokenReads = useReadContracts({
+    contracts: latestTokenAddress
+      ? [
+          {
+            address: latestTokenAddress,
+            abi: erc20Abi,
+            functionName: 'symbol',
+            chainId: sepolia.id,
+          },
+          {
+            address: latestTokenAddress,
+            abi: erc20Abi,
+            functionName: 'decimals',
+            chainId: sepolia.id,
+          },
+        ]
+      : [],
+    query: {
+      enabled: Boolean(latestTokenAddress),
+    },
+  });
+  const latestTokenSymbol = readString(tokenReads.data?.[0]?.result, 'TOKEN');
+  const latestTokenDecimals = readDecimals(tokenReads.data?.[1]?.result);
   const workflowSteps = buildWorkflowSteps(latestTrust);
 
   return (
@@ -79,7 +95,16 @@ export function TrustWorkflow() {
         </div>
         <div>
           <span className="data-label">Amount</span>
-          <strong>{latestTrust ? formatBrewAmount(latestTrust.amount) : '-'}</strong>
+          <strong>
+            {latestTrust
+              ? formatTrustAmount(
+                  latestTrust.amount,
+                  latestTokenDecimals,
+                  latestTokenSymbol,
+                  tokenReads.isLoading,
+                )
+              : '-'}
+          </strong>
         </div>
         <div>
           <span className="data-label">Beneficiary</span>

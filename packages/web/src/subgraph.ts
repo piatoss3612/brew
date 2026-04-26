@@ -3,13 +3,14 @@ export const BREW_SUBGRAPH_URL =
 
 const BREW_STATUS_QUERY = `
   query BrewStatus {
-    trusts(first: 5, orderBy: createdAt, orderDirection: desc) {
+    trusts(first: 20, orderBy: createdAt, orderDirection: desc) {
       id
       trustId
       sponsor
       beneficiary
       token
       amount
+      deadline
       status
       templateId
       createdAt
@@ -27,7 +28,7 @@ const BREW_STATUS_QUERY = `
       verifier
       updatedAt
     }
-    templates(first: 10) {
+    templates(first: 10, orderBy: registeredAt, orderDirection: asc) {
       id
       templateId
       schemaUid
@@ -47,6 +48,7 @@ export type BrewTrust = {
   beneficiary: string;
   token: string;
   amount: string;
+  deadline: string;
   status: TrustStatus;
   templateId: string;
   createdAt: string;
@@ -60,6 +62,15 @@ export type BrewTrust = {
   verifiedTx: string | null;
 };
 
+export type BrewTemplate = {
+  id: string;
+  templateId: string;
+  schemaUid: string;
+  expiryWindowSeconds: string;
+  stalenessWindowSeconds: string;
+  registeredAt: string;
+};
+
 export type BrewStatus = {
   trusts: BrewTrust[];
   verifierConfigs: Array<{
@@ -67,14 +78,7 @@ export type BrewStatus = {
     verifier: string;
     updatedAt: string;
   }>;
-  templates: Array<{
-    id: string;
-    templateId: string;
-    schemaUid: string;
-    expiryWindowSeconds: string;
-    stalenessWindowSeconds: string;
-    registeredAt: string;
-  }>;
+  templates: BrewTemplate[];
 };
 
 type GraphQlResponse<T> = {
