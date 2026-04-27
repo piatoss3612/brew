@@ -100,8 +100,8 @@ export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }
             <EvidenceValue label="Revert" value={evidence.keeperHub.revertReason} />
           </div>
           <ol className="evidence-phase-list">
-            {evidence.keeperHub.phases.map((phase) => (
-              <li key={phase.name}>
+            {evidence.keeperHub.phases.map((phase, index) => (
+              <li key={`${phase.name}-${phase.status}-${index}`}>
                 <span>{phase.name}</span>
                 <strong>{phase.status}</strong>
                 <p>{phase.summary}</p>

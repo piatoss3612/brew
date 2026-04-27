@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   decodeEventLog,
   encodeAbiParameters,
@@ -59,6 +59,24 @@ type ActionStep =
   | 'error';
 type ActiveAction = 'attest' | 'release' | 'refund';
 type KeeperHubTriggerState = 'idle' | 'triggering' | 'submitted' | 'error';
+type StoredKeeperHubExecution = {
+  version: 1;
+  trustId: string;
+  attestationUid?: string;
+  executionId?: string;
+  runId?: string;
+  status?: string;
+  savedAt: string;
+};
+type StoredAttestationDraft = {
+  version: 1;
+  trustId: string;
+  attestationUid: string;
+  attestationTx?: string;
+  schemaUid?: string;
+  beneficiary?: string;
+  savedAt: string;
+};
 
 type SchemaRecord = {
   uid: string;
@@ -73,6 +91,10 @@ type SchemaField = {
 };
 
 const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+const ATTESTATION_DRAFT_STORAGE_EVENT = 'brew:attestation-draft-storage';
+const ATTESTATION_DRAFT_STORAGE_PREFIX = 'brew:attestation-draft:v1';
+const KEEPERHUB_EXECUTION_STORAGE_EVENT = 'brew:keeperhub-execution-storage';
+const KEEPERHUB_EXECUTION_STORAGE_PREFIX = 'brew:keeperhub-execution:v1';
 const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as Hex;
 const DEFAULT_FIELD_VALUES: Record<string, string> = {
   conferral_date: '1704067200',
@@ -238,6 +260,165 @@ function readDeadlineSeconds(value?: string) {
   }
 }
 
+function keeperHubExecutionStorageKey(trustId: string) {
+  return `${KEEPERHUB_EXECUTION_STORAGE_PREFIX}:${trustId}`;
+}
+
+function attestationDraftStorageKey(trustId: string) {
+  return `${ATTESTATION_DRAFT_STORAGE_PREFIX}:${trustId}`;
+}
+
+function optionalString(value: unknown, key: string) {
+  if (!value || typeof value !== 'object') return undefined;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === 'string' && field.length > 0 ? field : undefined;
+}
+
+function readStoredKeeperHubExecution(value: unknown, trustId: string) {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+
+  if (record.version !== 1 || record.trustId !== trustId || typeof record.savedAt !== 'string') {
+    return null;
+  }
+
+  return {
+    version: 1,
+    trustId,
+    attestationUid: optionalString(record, 'attestationUid'),
+    executionId: optionalString(record, 'executionId'),
+    runId: optionalString(record, 'runId'),
+    status: optionalString(record, 'status'),
+    savedAt: record.savedAt,
+  } satisfies StoredKeeperHubExecution;
+}
+
+function readStoredAttestationDraft(value: unknown, trustId: string) {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const attestationUid = optionalString(record, 'attestationUid');
+
+  if (
+    record.version !== 1 ||
+    record.trustId !== trustId ||
+    typeof record.savedAt !== 'string' ||
+    !attestationUid ||
+    !isBytes32(attestationUid)
+  ) {
+    return null;
+  }
+
+  return {
+    version: 1,
+    trustId,
+    attestationUid,
+    attestationTx: optionalString(record, 'attestationTx'),
+    schemaUid: optionalString(record, 'schemaUid'),
+    beneficiary: optionalString(record, 'beneficiary'),
+    savedAt: record.savedAt,
+  } satisfies StoredAttestationDraft;
+}
+
+function storedAttestationDraftSnapshot(trustId: string) {
+  if (typeof window === 'undefined') return '';
+
+  try {
+    return window.localStorage.getItem(attestationDraftStorageKey(trustId)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function storedKeeperHubExecutionSnapshot(trustId: string) {
+  if (typeof window === 'undefined') return '';
+
+  try {
+    return window.localStorage.getItem(keeperHubExecutionStorageKey(trustId)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function saveStoredAttestationDraft(record: StoredAttestationDraft) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(
+      attestationDraftStorageKey(record.trustId),
+      JSON.stringify(record),
+    );
+    window.dispatchEvent(new Event(ATTESTATION_DRAFT_STORAGE_EVENT));
+  } catch {
+    // localStorage may be unavailable in private browsing or restricted contexts.
+  }
+}
+
+function saveStoredKeeperHubExecution(record: StoredKeeperHubExecution) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(
+      keeperHubExecutionStorageKey(record.trustId),
+      JSON.stringify(record),
+    );
+    window.dispatchEvent(new Event(KEEPERHUB_EXECUTION_STORAGE_EVENT));
+  } catch {
+    // localStorage may be unavailable in private browsing or restricted contexts.
+  }
+}
+
+function subscribeAttestationDraftStorage(onStoreChange: () => void) {
+  if (typeof window === 'undefined') return () => {};
+
+  const listener = () => onStoreChange();
+
+  window.addEventListener('storage', listener);
+  window.addEventListener(ATTESTATION_DRAFT_STORAGE_EVENT, listener);
+
+  return () => {
+    window.removeEventListener('storage', listener);
+    window.removeEventListener(ATTESTATION_DRAFT_STORAGE_EVENT, listener);
+  };
+}
+
+function subscribeKeeperHubExecutionStorage(onStoreChange: () => void) {
+  if (typeof window === 'undefined') return () => {};
+
+  const listener = () => onStoreChange();
+
+  window.addEventListener('storage', listener);
+  window.addEventListener(KEEPERHUB_EXECUTION_STORAGE_EVENT, listener);
+
+  return () => {
+    window.removeEventListener('storage', listener);
+    window.removeEventListener(KEEPERHUB_EXECUTION_STORAGE_EVENT, listener);
+  };
+}
+
+function emptyStorageSnapshot() {
+  return '';
+}
+
+function keeperHubRunLabel(record: Pick<StoredKeeperHubExecution, 'executionId' | 'runId' | 'status'>) {
+  return record.runId ?? record.executionId ?? record.status ?? 'submitted';
+}
+
+function formatKeeperHubSavedAt(value: string) {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return 'recently';
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestamp));
+}
+
+function formatLocalSavedAt(value: string) {
+  return formatKeeperHubSavedAt(value);
+}
+
 export function TrustDetail({ trustId }: { trustId: string }) {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -247,6 +428,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const queryClient = useQueryClient();
 
   const [attestationUid, setAttestationUid] = useState('');
+  const [attestationUidEdited, setAttestationUidEdited] = useState(false);
   const [attestationFieldValues, setAttestationFieldValues] = useState<Record<string, string>>({});
   const [attestationHash, setAttestationHash] = useState<string | null>(null);
   const [createdAttestationUid, setCreatedAttestationUid] = useState<string | null>(null);
@@ -268,6 +450,52 @@ export function TrustDetail({ trustId }: { trustId: string }) {
 
     return () => window.clearInterval(interval);
   }, []);
+
+  const getStoredKeeperHubExecutionSnapshot = useCallback(
+    () => storedKeeperHubExecutionSnapshot(trustId),
+    [trustId],
+  );
+  const storedKeeperHubExecutionJson = useSyncExternalStore(
+    subscribeKeeperHubExecutionStorage,
+    getStoredKeeperHubExecutionSnapshot,
+    emptyStorageSnapshot,
+  );
+  const storedKeeperHubExecution = useMemo(
+    () => {
+      if (!storedKeeperHubExecutionJson) return null;
+
+      try {
+        return readStoredKeeperHubExecution(
+          JSON.parse(storedKeeperHubExecutionJson),
+          trustId,
+        );
+      } catch {
+        return null;
+      }
+    },
+    [storedKeeperHubExecutionJson, trustId],
+  );
+  const getStoredAttestationDraftSnapshot = useCallback(
+    () => storedAttestationDraftSnapshot(trustId),
+    [trustId],
+  );
+  const storedAttestationDraftJson = useSyncExternalStore(
+    subscribeAttestationDraftStorage,
+    getStoredAttestationDraftSnapshot,
+    emptyStorageSnapshot,
+  );
+  const storedAttestationDraft = useMemo(
+    () => {
+      if (!storedAttestationDraftJson) return null;
+
+      try {
+        return readStoredAttestationDraft(JSON.parse(storedAttestationDraftJson), trustId);
+      } catch {
+        return null;
+      }
+    },
+    [storedAttestationDraftJson, trustId],
+  );
 
   const statusQuery = useQuery({
     queryKey: ['brew-status'],
@@ -362,7 +590,13 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     attestationExpiryWindow > 0
       ? BigInt(nowSeconds + Math.min(attestationExpiryWindow, 7 * 24 * 60 * 60))
       : BigInt(0);
-  const trimmedAttestationUid = attestationUid.trim();
+  const defaultAttestationUid =
+    trust?.attestationUid ??
+    storedAttestationDraft?.attestationUid ??
+    storedKeeperHubExecution?.attestationUid ??
+    '';
+  const displayedAttestationUid = attestationUidEdited ? attestationUid : defaultAttestationUid;
+  const trimmedAttestationUid = displayedAttestationUid.trim();
   const attestationReady = isBytes32(trimmedAttestationUid);
   const needsNetworkSwitch = isConnected && chainId !== sepolia.id;
   const deadlineSeconds = readDeadlineSeconds(trust?.deadline);
@@ -410,6 +644,36 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     trust?.status === 'PENDING' &&
     attestationReady &&
     keeperHubTriggerState !== 'triggering';
+  const displayedKeeperHubRunId =
+    keeperHubRunId ?? (storedKeeperHubExecution ? keeperHubRunLabel(storedKeeperHubExecution) : null);
+  const hasKeeperHubTrigger =
+    keeperHubTriggerState === 'submitted' || Boolean(storedKeeperHubExecution);
+
+  function updateAttestationUid(value: string) {
+    setAttestationUid(value);
+    setAttestationUidEdited(true);
+    setStep('idle');
+    setActiveAction(null);
+    setReleaseHash(null);
+    setErrorMessage(null);
+    setKeeperHubTriggerError(null);
+
+    const trimmedValue = value.trim();
+    if (trust && isBytes32(trimmedValue)) {
+      saveStoredAttestationDraft({
+        version: 1,
+        trustId: trust.trustId,
+        attestationUid: trimmedValue,
+        schemaUid,
+        beneficiary: trust.beneficiary,
+        savedAt: new Date().toISOString(),
+      });
+    }
+
+    if (keeperHubTriggerState === 'error') {
+      setKeeperHubTriggerState(storedKeeperHubExecution ? 'submitted' : 'idle');
+    }
+  }
 
   async function issueAttestation() {
     if (!trust || !beneficiaryAddress || !publicClient || !schemaUid || !isBytes32(schemaUid)) {
@@ -460,6 +724,16 @@ export function TrustDetail({ trustId }: { trustId: string }) {
 
       setCreatedAttestationUid(nextAttestationUid);
       setAttestationUid(nextAttestationUid);
+      setAttestationUidEdited(true);
+      saveStoredAttestationDraft({
+        version: 1,
+        trustId: trust.trustId,
+        attestationUid: nextAttestationUid,
+        attestationTx: nextAttestationHash,
+        schemaUid,
+        beneficiary: beneficiaryAddress,
+        savedAt: new Date().toISOString(),
+      });
       setStep('confirmed');
     } catch (error) {
       setStep('error');
@@ -522,7 +796,18 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         throw new Error(`KeeperHub trigger is not configured: ${result.missing.join(', ')}`);
       }
 
-      setKeeperHubRunId(result.runId ?? result.executionId ?? result.status ?? 'submitted');
+      const storedExecution = {
+        version: 1,
+        trustId: trust.trustId,
+        attestationUid: trimmedAttestationUid,
+        executionId: result.executionId,
+        runId: result.runId,
+        status: result.status ?? 'submitted',
+        savedAt: new Date().toISOString(),
+      } satisfies StoredKeeperHubExecution;
+
+      saveStoredKeeperHubExecution(storedExecution);
+      setKeeperHubRunId(keeperHubRunLabel(storedExecution));
       setKeeperHubTriggerState('submitted');
       await queryClient.invalidateQueries({ queryKey: ['keeperhub-evidence', trust.trustId] });
       window.setTimeout(() => {
@@ -589,7 +874,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const sponsorEvidence = buildSponsorEvidence({
     trust,
     template,
-    attestationUid: createdAttestationUid ?? attestationUid,
+    attestationUid: createdAttestationUid ?? (attestationReady ? trimmedAttestationUid : undefined),
     connectedIssuer: issuerAllowed ? address : undefined,
     keeperExecution:
       keeperHubQuery.data?.configured === true
@@ -790,17 +1075,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                 <input
                   autoComplete="off"
                   placeholder="0x..."
-                  value={attestationUid}
-                  onChange={(event) => {
-                    setAttestationUid(event.target.value);
-                    setStep('idle');
-                    setActiveAction(null);
-                    setReleaseHash(null);
-                    setErrorMessage(null);
-                    setKeeperHubRunId(null);
-                    setKeeperHubTriggerError(null);
-                    setKeeperHubTriggerState('idle');
-                  }}
+                  value={displayedAttestationUid}
+                  onChange={(event) => updateAttestationUid(event.target.value)}
                 />
               </label>
             </div>
@@ -828,17 +1104,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                 <input
                   autoComplete="off"
                   placeholder="0x..."
-                  value={attestationUid}
-                  onChange={(event) => {
-                    setAttestationUid(event.target.value);
-                    setStep('idle');
-                    setActiveAction(null);
-                    setReleaseHash(null);
-                    setErrorMessage(null);
-                    setKeeperHubRunId(null);
-                    setKeeperHubTriggerError(null);
-                    setKeeperHubTriggerState('idle');
-                  }}
+                  value={displayedAttestationUid}
+                  onChange={(event) => updateAttestationUid(event.target.value)}
                 />
               </label>
             </div>
@@ -861,11 +1128,26 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         {trimmedAttestationUid && !attestationReady ? (
           <p className="form-note">Enter a valid bytes32 attestation UID.</p>
         ) : null}
+        {storedAttestationDraft && !trust.attestationUid ? (
+          <p className="form-note">
+            Local attestation draft: <span title={storedAttestationDraft.attestationUid}>
+              {shortHash(storedAttestationDraft.attestationUid)}
+            </span>
+            , cached {formatLocalSavedAt(storedAttestationDraft.savedAt)}.
+          </p>
+        ) : null}
         {activeAction === 'release' && step !== 'idle' ? (
           <p className="form-note">Status: {step}</p>
         ) : null}
-        {keeperHubTriggerState === 'submitted' ? (
-          <p className="form-note">KeeperHub submitted: {keeperHubRunId}.</p>
+        {hasKeeperHubTrigger && displayedKeeperHubRunId ? (
+          <p className="form-note">
+            Last KeeperHub trigger:{' '}
+            <span title={displayedKeeperHubRunId}>{displayedKeeperHubRunId}</span>
+            {storedKeeperHubExecution
+              ? `, cached locally ${formatKeeperHubSavedAt(storedKeeperHubExecution.savedAt)}`
+              : ''}
+            .
+          </p>
         ) : null}
         {keeperHubTriggerState === 'error' && keeperHubTriggerError ? (
           <p className="data-error">{keeperHubTriggerError}</p>
