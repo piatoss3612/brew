@@ -44,7 +44,10 @@ import {
   statusLabels,
   txLink,
 } from '../../../format';
+import { fetchKeeperHubEvidence, triggerKeeperHubRelease } from '../../../keeperhub';
+import { buildSponsorEvidence } from '../../../sponsor-evidence';
 import { fetchBrewStatus } from '../../../subgraph';
+import { SponsorEvidencePanel } from './sponsor-evidence-panel';
 
 type ActionStep =
   | 'idle'
@@ -55,6 +58,7 @@ type ActionStep =
   | 'confirmed'
   | 'error';
 type ActiveAction = 'attest' | 'release' | 'refund';
+type KeeperHubTriggerState = 'idle' | 'triggering' | 'submitted' | 'error';
 
 type SchemaRecord = {
   uid: string;
@@ -248,6 +252,10 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const [createdAttestationUid, setCreatedAttestationUid] = useState<string | null>(null);
   const [releaseHash, setReleaseHash] = useState<string | null>(null);
   const [refundHash, setRefundHash] = useState<string | null>(null);
+  const [keeperHubRunId, setKeeperHubRunId] = useState<string | null>(null);
+  const [keeperHubTriggerState, setKeeperHubTriggerState] =
+    useState<KeeperHubTriggerState>('idle');
+  const [keeperHubTriggerError, setKeeperHubTriggerError] = useState<string | null>(null);
   const [step, setStep] = useState<ActionStep>('idle');
   const [activeAction, setActiveAction] = useState<ActiveAction | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -275,6 +283,12 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     () => statusQuery.data?.templates.find((item) => item.templateId === trust?.templateId),
     [statusQuery.data?.templates, trust?.templateId],
   );
+  const keeperHubQuery = useQuery({
+    queryKey: ['keeperhub-evidence', trust?.trustId ?? trustId],
+    queryFn: () => fetchKeeperHubEvidence(trust?.trustId ?? trustId),
+    enabled: Boolean(trust),
+    refetchOnWindowFocus: false,
+  });
 
   const tokenAddress = trust && isAddress(trust.token) ? (trust.token as Address) : undefined;
   const beneficiaryAddress =
@@ -391,6 +405,11 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     refundReady &&
     !actionBusy &&
     !(activeAction === 'refund' && step === 'confirmed');
+  const canTriggerKeeperHub =
+    Boolean(trust) &&
+    trust?.status === 'PENDING' &&
+    attestationReady &&
+    keeperHubTriggerState !== 'triggering';
 
   async function issueAttestation() {
     if (!trust || !beneficiaryAddress || !publicClient || !schemaUid || !isBytes32(schemaUid)) {
@@ -484,6 +503,39 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     }
   }
 
+  async function triggerKeeperHubWorkflow() {
+    if (!trust || !isBytes32(trimmedAttestationUid)) {
+      return;
+    }
+
+    setKeeperHubTriggerState('triggering');
+    setKeeperHubTriggerError(null);
+    setKeeperHubRunId(null);
+
+    try {
+      const result = await triggerKeeperHubRelease({
+        trustId: trust.trustId,
+        attestationUid: trimmedAttestationUid,
+      });
+
+      if (!result.configured) {
+        throw new Error(`KeeperHub trigger is not configured: ${result.missing.join(', ')}`);
+      }
+
+      setKeeperHubRunId(result.runId ?? result.executionId ?? result.status ?? 'submitted');
+      setKeeperHubTriggerState('submitted');
+      await queryClient.invalidateQueries({ queryKey: ['keeperhub-evidence', trust.trustId] });
+      window.setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ['keeperhub-evidence', trust.trustId] });
+      }, 2500);
+    } catch (error) {
+      setKeeperHubTriggerState('error');
+      setKeeperHubTriggerError(
+        error instanceof Error ? error.message : 'KeeperHub trigger failed',
+      );
+    }
+  }
+
   async function refundTrust() {
     if (!trust || !publicClient) {
       return;
@@ -534,6 +586,16 @@ export function TrustDetail({ trustId }: { trustId: string }) {
 
   const role = getWalletTrustRole(trust.sponsor, trust.beneficiary, address);
   const isTerminal = terminalStatus(trust.status);
+  const sponsorEvidence = buildSponsorEvidence({
+    trust,
+    template,
+    attestationUid: createdAttestationUid ?? attestationUid,
+    connectedIssuer: issuerAllowed ? address : undefined,
+    keeperExecution:
+      keeperHubQuery.data?.configured === true
+        ? keeperHubQuery.data.keeperExecution
+        : undefined,
+  });
 
   return (
     <>
@@ -592,6 +654,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
           </div>
         </div>
       </section>
+
+      <SponsorEvidencePanel evidence={sponsorEvidence} />
 
       <section className="sponsor-panel" aria-label="Issue attestation">
         <div className="section-heading">
@@ -733,17 +797,62 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                     setActiveAction(null);
                     setReleaseHash(null);
                     setErrorMessage(null);
+                    setKeeperHubRunId(null);
+                    setKeeperHubTriggerError(null);
+                    setKeeperHubTriggerState('idle');
                   }}
                 />
               </label>
             </div>
 
-            <button className="primary-action" disabled={!canRelease} onClick={verifyAndRelease}>
-              {needsNetworkSwitch ? 'Switch and release' : 'Verify and release'}
-            </button>
+            <div className="action-row">
+              <button className="primary-action" disabled={!canRelease} onClick={verifyAndRelease}>
+                {needsNetworkSwitch ? 'Switch and release' : 'Verify and release'}
+              </button>
+              <button
+                className="secondary-action"
+                disabled={!canTriggerKeeperHub}
+                onClick={triggerKeeperHubWorkflow}
+              >
+                {keeperHubTriggerState === 'triggering'
+                  ? 'Triggering KeeperHub'
+                  : 'Run KeeperHub release'}
+              </button>
+            </div>
           </>
         ) : !isTerminal ? (
-          <p className="form-note">Waiting for an issuer attestation for this beneficiary.</p>
+          <>
+            <div className="form-grid input-panel">
+              <label className="wide-field">
+                Attestation UID
+                <input
+                  autoComplete="off"
+                  placeholder="0x..."
+                  value={attestationUid}
+                  onChange={(event) => {
+                    setAttestationUid(event.target.value);
+                    setStep('idle');
+                    setActiveAction(null);
+                    setReleaseHash(null);
+                    setErrorMessage(null);
+                    setKeeperHubRunId(null);
+                    setKeeperHubTriggerError(null);
+                    setKeeperHubTriggerState('idle');
+                  }}
+                />
+              </label>
+            </div>
+
+            <button
+              className="secondary-action"
+              disabled={!canTriggerKeeperHub}
+              onClick={triggerKeeperHubWorkflow}
+            >
+              {keeperHubTriggerState === 'triggering'
+                ? 'Triggering KeeperHub'
+                : 'Run KeeperHub release'}
+            </button>
+          </>
         ) : (
           <p className="form-note">Status: {statusLabels[trust.status]}</p>
         )}
@@ -754,6 +863,12 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         ) : null}
         {activeAction === 'release' && step !== 'idle' ? (
           <p className="form-note">Status: {step}</p>
+        ) : null}
+        {keeperHubTriggerState === 'submitted' ? (
+          <p className="form-note">KeeperHub submitted: {keeperHubRunId}.</p>
+        ) : null}
+        {keeperHubTriggerState === 'error' && keeperHubTriggerError ? (
+          <p className="data-error">{keeperHubTriggerError}</p>
         ) : null}
         {trust.verifiedTx ? (
           <a className="tx-link" href={txLink(trust.verifiedTx)} target="_blank" rel="noreferrer">
