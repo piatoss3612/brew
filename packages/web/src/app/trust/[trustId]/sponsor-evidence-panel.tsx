@@ -70,6 +70,7 @@ export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }
           <div className="evidence-values">
             <EvidenceValue label="Name" value={evidence.agent.ensName} />
             <EvidenceValue label="Role" value={evidence.agent.role} />
+            <EvidenceValue label="Intervenes" value={evidence.agent.intervention.location} />
             <EvidenceValue
               label="Workflow"
               value={evidence.agent.records['com.brew.keeperhub_workflow']}
@@ -88,6 +89,7 @@ export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }
           </div>
           <div className="evidence-values">
             <EvidenceValue label="Workflow" value={evidence.keeperHub.workflowId} />
+            <EvidenceValue label="Execution" value={evidence.keeperHub.executionId} />
             <EvidenceValue label="Run" value={evidence.keeperHub.runId} />
             <EvidenceValue label="Status" value={evidence.keeperHub.status} />
             <EvidenceValue label="Action" value={evidence.keeperHub.action} />
@@ -121,9 +123,14 @@ export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }
           <div className="evidence-values">
             <EvidenceValue label="Provider" value={evidence.storage.provider} />
             <EvidenceValue label="Manifest" value={evidence.storage.manifestUri} />
-            <EvidenceValue label="Root" value={evidence.storage.metadataRoot} />
+            <EvidenceValue
+              label="Digest"
+              value={shortMaybeHash(evidence.receipt.receiptDigest)}
+              title={evidence.receipt.receiptDigest}
+            />
             <EvidenceValue label="Receipt" value={evidence.storage.receiptKey} />
             <EvidenceValue label="Run status" value={evidence.receipt.keeperHubStatus} />
+            <EvidenceValue label="Issued" value={evidence.receipt.issuedAt} />
           </div>
         </article>
 
@@ -156,6 +163,9 @@ export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }
         <span className="data-label">Release authority</span>
         <strong>{evidence.verifier.authority}</strong>
       </div>
+      <p className="form-note">
+        Agent boundary: {evidence.agent.intervention.boundary}
+      </p>
       <p className="form-note">{evidence.keeperHub.nodeStatusSummary}</p>
     </section>
   );

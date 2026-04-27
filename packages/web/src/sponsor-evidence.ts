@@ -4,6 +4,7 @@ import {
   EAS_ADDRESS,
 } from './contracts';
 import type { BrewTemplate, BrewTrust } from './subgraph';
+import { keccak256, toHex } from 'viem';
 
 export type EvidenceMode = 'live' | 'simulated' | 'planned' | 'skipped';
 export type KeeperExecutionStatus = 'waiting' | 'ready' | 'completed' | 'blocked';
@@ -33,7 +34,10 @@ export type KeeperExecutionInput = {
 export type KeeperExecutionResult = {
   workflowId: string;
   executionMode: EvidenceMode;
+  executionId?: string;
   runId?: string;
+  startedAt?: string;
+  completedAt?: string;
   status: KeeperExecutionStatus;
   action: string;
   txHash?: string;
@@ -129,16 +133,27 @@ export type KeeperHubTriggerApiResponse =
     };
 
 export type BrewEvidenceReceipt = {
+  version: 'brew.receipt.v1';
   key: string;
   mode: EvidenceMode;
+  receiptDigest: string;
   trustId: string;
   templateId: string;
   attestationUid?: string;
+  agentIntervention: {
+    location: string;
+    role: string;
+    responsibility: string;
+    boundary: string;
+  };
+  keeperHubWorkflowId: string;
+  keeperHubExecutionId?: string;
   keeperHubRunId?: string;
   keeperHubStatus: KeeperExecutionStatus;
   verifierOutcome: 'pending' | 'released' | 'refunded';
   txHash?: string;
   revertReason?: string;
+  issuedAt: string;
 };
 
 export type SponsorEvidence = {
@@ -147,6 +162,7 @@ export type SponsorEvidence = {
     resolverMode: EvidenceMode;
     role: string;
     records: Record<string, string>;
+    intervention: BrewEvidenceReceipt['agentIntervention'];
   };
   issuer: {
     address?: string;
@@ -157,6 +173,7 @@ export type SponsorEvidence = {
   keeperHub: {
     workflowId: string;
     executionMode: EvidenceMode;
+    executionId?: string;
     runId?: string;
     status: KeeperExecutionStatus;
     action: string;
@@ -191,6 +208,12 @@ export type SponsorEvidence = {
 
 const AGENT_ENS_NAME = 'operator.brew.eth';
 const KEEPER_WORKFLOW_ID = 'kh://workflow/verify-and-release';
+const AGENT_INTERVENTION: BrewEvidenceReceipt['agentIntervention'] = {
+  location: 'KeeperHub preflight, after ReadTrust and before ReleaseTrust',
+  role: 'Trust Operations Agent',
+  responsibility: 'Assemble trust state, attestation UID, execution status, and receipt evidence for the release attempt.',
+  boundary: 'The agent prepares and explains the execution; AttestationVerifier and BrewEscrow decide whether funds can move.',
+};
 
 function placeholderRoot(trustId: string) {
   return `simulated-root:brew:${trustId}`;
@@ -344,7 +367,10 @@ export function normalizeKeeperHubExecution(input: {
   return {
     workflowId: input.workflowId,
     executionMode: 'live',
+    executionId: input.executionId,
     runId: input.runId,
+    startedAt: input.execution?.startedAt,
+    completedAt: input.execution?.completedAt,
     status: mapKeeperHubStatus(status),
     action: 'verifyAndRelease(uint256,address,bytes32)',
     txHash,
@@ -528,19 +554,64 @@ function buildEvidenceReceipt(input: {
   attestationUid?: string;
 }): BrewEvidenceReceipt {
   const { trust, keeperExecution, attestationUid } = input;
-
-  return {
-    key: `evidence:${trust.trustId}:${trust.status.toLowerCase()}`,
-    mode: 'simulated',
+  const issuedAt = receiptIssuedAt(trust, keeperExecution);
+  const digestInput = {
+    version: 'brew.receipt.v1',
     trustId: trust.trustId,
     templateId: trust.templateId,
+    beneficiary: trust.beneficiary,
     attestationUid,
+    agentIntervention: AGENT_INTERVENTION,
+    keeperHubWorkflowId: keeperExecution.workflowId,
+    keeperHubExecutionId: keeperExecution.executionId,
     keeperHubRunId: keeperExecution.runId,
     keeperHubStatus: keeperExecution.status,
     verifierOutcome: verifierOutcome(trust),
     txHash: keeperExecution.txHash,
     revertReason: keeperExecution.revertReason,
+    issuedAt,
   };
+  const receiptDigest = keccak256(toHex(JSON.stringify(digestInput)));
+
+  return {
+    version: 'brew.receipt.v1',
+    key: `evidence:${trust.trustId}:${receiptDigest.slice(2, 14)}`,
+    mode: 'simulated',
+    receiptDigest,
+    trustId: trust.trustId,
+    templateId: trust.templateId,
+    attestationUid,
+    agentIntervention: AGENT_INTERVENTION,
+    keeperHubWorkflowId: keeperExecution.workflowId,
+    keeperHubExecutionId: keeperExecution.executionId,
+    keeperHubRunId: keeperExecution.runId,
+    keeperHubStatus: keeperExecution.status,
+    verifierOutcome: verifierOutcome(trust),
+    txHash: keeperExecution.txHash,
+    revertReason: keeperExecution.revertReason,
+    issuedAt,
+  };
+}
+
+function timestampSecondsToIso(value: string | null | undefined) {
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+
+  return new Date(seconds * 1000).toISOString();
+}
+
+function receiptIssuedAt(trust: BrewTrust, keeperExecution: KeeperExecutionResult) {
+  return (
+    keeperExecution.completedAt ??
+    keeperExecution.startedAt ??
+    timestampSecondsToIso(trust.verifiedAt) ??
+    timestampSecondsToIso(trust.releasedAt) ??
+    timestampSecondsToIso(trust.refundedAt) ??
+    timestampSecondsToIso(trust.createdAt) ??
+    '1970-01-01T00:00:00.000Z'
+  );
 }
 
 export function buildSponsorEvidence(input: {
@@ -566,6 +637,7 @@ export function buildSponsorEvidence(input: {
       ensName: AGENT_ENS_NAME,
       resolverMode: 'planned',
       role: 'Trust Operations Agent',
+      intervention: AGENT_INTERVENTION,
       records: {
         'com.brew.role': 'trust-operations-agent',
         'com.brew.keeperhub_workflow': KEEPER_WORKFLOW_ID,
@@ -587,7 +659,7 @@ export function buildSponsorEvidence(input: {
       provider: '0G',
       storageStatus: 'simulated',
       manifestUri: `0g://simulated/brew/trust/${trust.trustId}/manifest.json`,
-      metadataRoot: placeholderRoot(trust.trustId),
+      metadataRoot: receipt.receiptDigest,
       receiptKey: receipt.key,
     },
     receipt,
