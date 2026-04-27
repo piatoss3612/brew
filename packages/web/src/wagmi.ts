@@ -1,16 +1,12 @@
-import { getDefaultConfig } from '@rainbow-me/rainbowkit';
-import { metaMaskWallet } from '@rainbow-me/rainbowkit/wallets';
+import { createConfig, http } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
+import { injected } from 'wagmi/connectors';
 
-export const config = getDefaultConfig({
-  appName: 'Brew',
-  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? 'YOUR_PROJECT_ID',
+export const config = createConfig({
   chains: [sepolia],
-  wallets: [
-    {
-      groupName: 'Wallets',
-      wallets: [metaMaskWallet],
-    },
-  ],
+  connectors: [injected({ target: 'metaMask' })],
+  transports: {
+    [sepolia.id]: http(),
+  },
   ssr: true,
 });
