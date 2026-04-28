@@ -9,7 +9,7 @@ import {BrewEscrow} from "../src/BrewEscrow.sol";
 import {IBrewEscrow} from "../src/interfaces/IBrewEscrow.sol";
 import {BrewConfig} from "./BrewConfig.sol";
 
-/// @notice Deploys BrewEscrow + AttestationVerifier and wires escrow.verifier.
+/// @notice Deploys BrewEscrow + AttestationVerifier and wires the core release path.
 contract DeployBrewCore is Script {
     function run() external returns (BrewEscrow escrow, AttestationVerifier verifier) {
         address deployer = _keystoreSigner();
