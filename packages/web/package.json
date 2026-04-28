@@ -6,11 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "eslint .",
+    "killtest:0g-review": "node scripts/killtest-0g-review.mjs",
+    "print:keeperhub-0g-code": "node scripts/print-keeperhub-0g-code.mjs",
     "start": "next start"
   },
   "dependencies": {
+    "@0glabs/0g-serving-broker": "^0.7.5",
     "@rainbow-me/rainbowkit": "2.2.10",
     "@tanstack/react-query": "5.100.5",
+    "crypto-js": "4.2.0",
+    "ethers": "^6.16.0",
     "next": "16.2.4",
     "react": "19.2.5",
     "react-dom": "19.2.5",
