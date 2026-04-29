@@ -9,29 +9,99 @@ const model = readEnv('OG_COMPUTE_MODEL') ?? '<OG_COMPUTE_MODEL>';
 const appSecret = includeSecret
   ? readEnv('OG_COMPUTE_APP_SECRET') ?? '<OG_COMPUTE_APP_SECRET>'
   : '<OG_COMPUTE_APP_SECRET>';
+const reviewReceiptUrl =
+  readEnv('BREW_REVIEW_RECEIPT_URL') ?? '<BREW_WEB_ORIGIN>/api/review-receipt';
+const reviewReceiptApiKey = includeSecret
+  ? readEnv('BREW_REVIEW_RECEIPT_API_KEY') ?? ''
+  : '<BREW_REVIEW_RECEIPT_API_KEY>';
 
-console.log(buildCodeNode({ proxyUrl, model, appSecret }));
+console.log(buildCodeNode({ proxyUrl, model, appSecret, reviewReceiptUrl, reviewReceiptApiKey }));
 
-function buildCodeNode({ proxyUrl, model, appSecret }) {
-  return `// Brew 0G release-review node.
+function buildCodeNode({ proxyUrl, model, appSecret, reviewReceiptUrl, reviewReceiptApiKey }) {
+  return `// Brew 0G release-review + storage-backed signed receipt node.
 // Paste this into a KeeperHub Code node after ReadTrust.
-// Replace template variable node names if your workflow uses different labels.
-const trust = {{ReadTrust.result}};
-const attestationUid = {{Trigger.attestationUid}};
+// Boundary:
+// - KeeperHub owns the 0G review workflow step and execution log.
+// - The Brew receipt endpoint uploads the review artifact to 0G Storage.
+// - The coordinator private key stays on the Brew receipt endpoint.
+// - The verifier contract, not the AI response, remains the release authority.
+// Expected inputs:
+// - Trigger.trustId
+// - Trigger.attestationUid
+// - ReadTrust.result or ReadTrust.result.result containing the BrewEscrow Trust object
+
+const readTrust = {{ReadTrust.result}};
+const triggerTrustId = {{Trigger.trustId}};
+const triggerAttestationUid = {{Trigger.attestationUid}};
 
 const proxyUrl = ${JSON.stringify(proxyUrl)};
 const model = ${JSON.stringify(model)};
 const appSecret = ${JSON.stringify(appSecret)};
+const reviewReceiptUrl = ${JSON.stringify(reviewReceiptUrl)};
+const reviewReceiptApiKey = ${JSON.stringify(reviewReceiptApiKey)};
+
+function unwrapTrust(value) {
+  if (value && typeof value === 'object' && value.result && typeof value.result === 'object') {
+    return value.result;
+  }
+  return value ?? {};
+}
+
+function pickString(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+  }
+  return '';
+}
+
+function blocked(summary, extra = {}) {
+  return {
+    mode: 'live',
+    provider: '0g-compute',
+    status: 'blocked',
+    releaseReady: false,
+    decision: 'blocked',
+    rationale: [summary],
+    riskFlags: ['workflow_blocked'],
+    nextAction: 'do_not_release',
+    receiptSummary: summary,
+    ...extra,
+  };
+}
+
+function cleanJsonContent(content) {
+  return String(content ?? '')
+    .trim()
+    .replace(/^\\\`\\\`\\\`(?:json)?/i, '')
+    .replace(/\\\`\\\`\\\`$/i, '')
+    .trim();
+}
+
+const trust = unwrapTrust(readTrust);
+const trustId = pickString(triggerTrustId, trust?.trustId, trust?.id);
+const attestationUid = pickString(triggerAttestationUid);
+const beneficiary = pickString(trust?.beneficiary);
+const templateId = pickString(trust?.templateId);
+
+if (!trustId || !attestationUid || !beneficiary || !templateId) {
+  return blocked('KeeperHub input is missing trustId, attestationUid, beneficiary, or templateId.', {
+    trustId,
+    attestationUid,
+    beneficiary,
+    templateId,
+  });
+}
 
 const reviewContext = {
-  trustId: trust?.trustId ?? trust?.id ?? null,
-  beneficiary: trust?.beneficiary ?? null,
-  templateId: trust?.templateId ?? null,
-  token: trust?.token ?? null,
-  amount: trust?.amount ?? null,
-  deadline: trust?.deadline ?? null,
-  released: trust?.released ?? false,
-  refunded: trust?.refunded ?? false,
+  trustId,
+  beneficiary,
+  templateId,
+  token: pickString(trust?.token),
+  amount: pickString(trust?.amount),
+  deadline: pickString(trust?.deadline),
+  released: Boolean(trust?.released),
+  refunded: Boolean(trust?.refunded),
   attestationUid,
 };
 
@@ -67,77 +137,143 @@ const response = await fetch(proxyUrl, {
       { role: 'user', content: prompt },
     ],
     temperature: 0,
-    max_tokens: 256,
+    max_tokens: 512,
   }),
 });
 
 const responseText = await response.text();
+const responseKey = response.headers.get('ZG-Res-Key') ?? response.headers.get('zg-res-key');
+
 if (!response.ok) {
-  return {
-    mode: 'live',
-    provider: '0g-compute',
-    decision: 'blocked',
-    rationale: [\`0G Compute returned HTTP \${response.status}\`],
-    riskFlags: [responseText.slice(0, 500)],
-    nextAction: 'do_not_release',
-    receiptSummary: '0G release review failed before verifier execution.',
-    responseId: null,
-    responseKey: null,
-  };
+  return blocked(\`0G Compute returned HTTP \${response.status}\`, {
+    responseKey,
+    error: responseText.slice(0, 1000),
+  });
 }
 
 let body;
 try {
   body = JSON.parse(responseText);
 } catch (error) {
+  return blocked('0G Compute response was not JSON.', {
+    responseKey,
+    error: String(error?.message ?? error),
+    raw: responseText.slice(0, 1000),
+  });
+}
+
+const responseId = body?.id ?? null;
+const rawContent = body?.choices?.[0]?.message?.content ?? '';
+let review;
+try {
+  review = JSON.parse(cleanJsonContent(rawContent));
+} catch (error) {
+  return blocked('0G Compute did not return strict JSON review content.', {
+    responseId,
+    responseKey,
+    error: String(error?.message ?? error),
+    rawContent: String(rawContent).slice(0, 1000),
+  });
+}
+
+const releaseReady =
+  review?.decision === 'ready_for_verifier' && review?.nextAction === 'trigger_keeperhub';
+
+if (!releaseReady) {
   return {
     mode: 'live',
     provider: '0g-compute',
-    decision: 'blocked',
-    rationale: ['0G Compute response was not JSON.'],
-    riskFlags: [String(error?.message ?? error)],
-    nextAction: 'do_not_release',
-    receiptSummary: '0G release review returned an unparsable response.',
-    responseId: null,
-    responseKey: null,
+    agentName: 'Trust Operations Agent',
+    status: 'reviewed',
+    releaseReady: false,
+    trustId,
+    attestationUid,
+    beneficiary,
+    templateId,
+    decision: review?.decision ?? 'blocked',
+    rationale: Array.isArray(review?.rationale) ? review.rationale : [],
+    riskFlags: Array.isArray(review?.riskFlags) ? review.riskFlags : [],
+    nextAction: review?.nextAction ?? 'do_not_release',
+    receiptSummary: review?.receiptSummary ?? '0G Compute did not recommend verifier release.',
+    responseId,
+    responseKey,
+    rawContent,
   };
 }
 
-const rawContent = body?.choices?.[0]?.message?.content ?? '';
-const cleanedContent = String(rawContent)
-  .trim()
-  .replace(/^\\\`\\\`\\\`(?:json)?/i, '')
-  .replace(/\\\`\\\`\\\`$/i, '')
-  .trim();
+const receiptResponse = await fetch(reviewReceiptUrl, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    ...(reviewReceiptApiKey ? { Authorization: \`Bearer \${reviewReceiptApiKey}\` } : {}),
+  },
+  body: JSON.stringify({
+    trustId,
+    beneficiary,
+    attestationUid,
+    templateId,
+    source: 'keeperhub-code-node',
+    review: {
+      mode: 'live',
+      provider: '0g-compute',
+      model,
+      endpoint: proxyUrl,
+      responseId,
+      responseKey,
+      decision: review.decision,
+      rationale: Array.isArray(review.rationale) ? review.rationale : [],
+      riskFlags: Array.isArray(review.riskFlags) ? review.riskFlags : [],
+      nextAction: review.nextAction,
+      receiptSummary: review.receiptSummary,
+      rawContent,
+    },
+  }),
+});
 
-let review;
+const receiptText = await receiptResponse.text();
+let receiptBody;
 try {
-  review = JSON.parse(cleanedContent);
+  receiptBody = receiptText ? JSON.parse(receiptText) : {};
 } catch (error) {
-  return {
-    mode: 'live',
-    provider: '0g-compute',
-    decision: 'blocked',
-    rationale: ['0G Compute did not return strict JSON review content.'],
-    riskFlags: [String(error?.message ?? error), rawContent.slice(0, 500)],
-    nextAction: 'do_not_release',
-    receiptSummary: '0G release review could not be parsed into the Brew review schema.',
-    responseId: body?.id ?? null,
-    responseKey: response.headers.get('ZG-Res-Key') ?? response.headers.get('zg-res-key'),
-  };
+  return blocked('Review receipt API response was not JSON.', {
+    responseId,
+    responseKey,
+    error: String(error?.message ?? error),
+    raw: receiptText.slice(0, 1000),
+  });
+}
+
+if (!receiptResponse.ok || receiptBody?.configured === false || !receiptBody?.reviewReceipt || !receiptBody?.coordinatorSignature) {
+  return blocked('Review receipt API did not return a signed receipt.', {
+    responseId,
+    responseKey,
+    receiptStatus: receiptResponse.status,
+    receiptBody,
+  });
 }
 
 return {
   mode: 'live',
   provider: '0g-compute',
   agentName: 'Trust Operations Agent',
-  decision: review.decision ?? 'blocked',
+  status: 'ready',
+  releaseReady: true,
+  trustId,
+  attestationUid,
+  beneficiary,
+  templateId,
+  decision: review.decision,
   rationale: Array.isArray(review.rationale) ? review.rationale : [],
   riskFlags: Array.isArray(review.riskFlags) ? review.riskFlags : [],
-  nextAction: review.nextAction ?? 'do_not_release',
-  receiptSummary: review.receiptSummary ?? '0G Compute produced a Brew release review.',
-  responseId: body?.id ?? null,
-  responseKey: response.headers.get('ZG-Res-Key') ?? response.headers.get('zg-res-key'),
+  nextAction: review.nextAction,
+  receiptSummary: review.receiptSummary ?? '0G Compute recommended verifier release.',
+  responseId,
+  responseKey,
+  rawContent,
+  reviewReceipt: receiptBody.reviewReceipt,
+  coordinatorSignature: receiptBody.coordinatorSignature,
+  receiptDigestInput: receiptBody.receiptDigestInput,
+  receiptStorage: receiptBody.receiptStorage,
 };`;
 }
 
