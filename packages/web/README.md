@@ -10,14 +10,14 @@ KeeperHub is the release workflow boundary:
 UI trigger
 -> KeeperHub webhook
 -> ReadTrust
--> 0G Compute review Code node
--> /api/review-receipt uploads ReviewReceipt artifact to 0G Storage
--> /api/review-receipt signs EIP-712 ReviewReceipt over the storage root
+-> 0G Compute Evidence / Policy / Risk review swarm
+-> receipt-service /review-receipt uploads ReviewReceipt artifact to 0G Storage
+-> receipt-service signs EIP-712 ReviewReceipt over the storage root
 -> UI receives reviewReceipt + coordinatorSignature
 -> beneficiary calls verifyAndRelease
 ```
 
-The coordinator private key stays in the Brew app environment. Do not paste it into the KeeperHub Code node. The AI review is advisory; `AttestationVerifier` and `BrewEscrow` remain the release authority. `receiptRoot` is the 0G Storage root of the persisted review artifact.
+The coordinator private key stays in `packages/receipt-service`. Do not paste it into the KeeperHub Code node. The AI review is advisory; `AttestationVerifier` and `BrewEscrow` remain the release authority. `receiptRoot` is the 0G Storage root of the persisted review artifact.
 
 ## Setup
 
@@ -32,6 +32,8 @@ Generate the KeeperHub Code node snippet:
 ```bash
 yarn print:keeperhub-0g-code
 ```
+
+The generated Code node runs three 0G Compute review agents: `Evidence`, `Policy`, and `Risk`. It sends `agenticIds`, `votes`, and `aggregate` to `packages/receipt-service`, which stores a `BrewSwarmReviewBundle` on 0G Storage and signs the resulting root.
 
 Inline configured secrets only for a controlled demo environment:
 
@@ -69,10 +71,10 @@ yarn killtest:0g-storage-retrieve \
 
 `BREW_0G_STORAGE_PRIVATE_KEY` uploads review receipt artifacts to 0G Storage. If omitted, the app falls back to `ZERO_G_PRIVATE_KEY`.
 
-`BREW_REVIEW_COORDINATOR_PRIVATE_KEY` signs the EIP-712 review receipt server-side. `BREW_REVIEW_COORDINATOR_ADDRESS` must be allowlisted in `AttestationVerifier`.
+`BREW_REVIEW_COORDINATOR_PRIVATE_KEY` should live in `packages/receipt-service` for the normal flow. The web env only needs it if you intentionally use the legacy Next API fallback. `BREW_REVIEW_COORDINATOR_ADDRESS` must be allowlisted in `AttestationVerifier`.
 
-`BREW_REVIEW_RECEIPT_URL` should point to the public app endpoint, usually:
+`BREW_REVIEW_RECEIPT_URL` should point to the public receipt service endpoint, usually:
 
 ```text
-https://<brew-web-origin>/api/review-receipt
+https://<receipt-service-origin>/review-receipt
 ```
