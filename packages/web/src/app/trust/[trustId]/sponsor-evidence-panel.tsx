@@ -74,6 +74,8 @@ export function SponsorEvidencePanel({
   evidence: SponsorEvidence;
   onOpenStorageUri?: (uri: string) => void;
 }) {
+  const hasStorageSubmission = typeof evidence.storage.submissionSequence === 'number';
+
   return (
     <section className="sponsor-panel" aria-label="Sponsor evidence">
       <div className="section-heading">
@@ -156,11 +158,15 @@ export function SponsorEvidencePanel({
             <EvidenceValue
               label="StorageScan"
               value={
-                typeof evidence.storage.submissionSequence === 'number'
+                hasStorageSubmission
                   ? `Submission ${evidence.storage.submissionSequence}`
-                  : 'Open explorer'
+                  : 'Resolving submission'
               }
-              link={storageScanSubmissionLink(evidence.storage.submissionSequence)}
+              link={
+                hasStorageSubmission
+                  ? storageScanSubmissionLink(evidence.storage.submissionSequence)
+                  : undefined
+              }
             />
             <EvidenceValue
               label="Root"
