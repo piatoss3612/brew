@@ -119,6 +119,7 @@ test('buildReceiptArtifact wraps legacy single review as an operations vote', ()
 test('normalizeReviewReceiptInput accepts swarm fields from request bodies', () => {
   const input = normalizeReviewReceiptInput({
     ...VALID_INPUT,
+    executeRelease: true,
     agenticIds: AGENTIC_IDS,
     votes: VOTES,
     aggregate: {
@@ -130,6 +131,7 @@ test('normalizeReviewReceiptInput accepts swarm fields from request bodies', () 
 
   assert.deepEqual(input.agenticIds, AGENTIC_IDS);
   assert.deepEqual(input.votes, VOTES);
+  assert.equal(input.executeRelease, true);
   assert.deepEqual(input.aggregate, {
     rule: 'evidence approve + risk pass',
     verdict: 'ReleaseRecommended',

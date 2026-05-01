@@ -14,6 +14,8 @@ const body = {
   beneficiary: requiredValue('--beneficiary', 'BREW_REVIEW_TEST_BENEFICIARY'),
   templateId: requiredValue('--template-id', 'BREW_REVIEW_TEST_TEMPLATE_ID'),
   attestationUid: requiredValue('--attestation-uid', 'BREW_REVIEW_TEST_ATTESTATION_UID'),
+  runReviewSwarm: process.argv.includes('--run-review-swarm'),
+  executeRelease: process.argv.includes('--execute-release'),
   source: 'receipt-service-killtest',
   review: {
     mode: 'killtest',

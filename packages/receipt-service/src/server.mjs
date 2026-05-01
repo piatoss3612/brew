@@ -3,14 +3,20 @@ import { fileURLToPath } from 'node:url';
 
 import { loadEnvFiles, readServiceConfig } from './config.mjs';
 import {
+  triggerKeeperHubWebhook,
+  validateKeeperHubWebhookConfig,
+} from './keeperhub-webhook.mjs';
+import {
   generateReviewReceipt,
   normalizeReviewReceiptInput,
   validateReviewReceiptInput,
   validateServiceConfig,
 } from './review-receipt.mjs';
+import { runReviewSwarm, validateReviewComputeConfig } from './review-swarm.mjs';
 import { downloadJsonArtifactFromZeroGStorage } from './zero-g-storage.mjs';
 
 const MAX_BODY_BYTES = 1024 * 1024;
+let requestSequence = 0;
 
 export function createReceiptService(config = readServiceConfig()) {
   return createServer(async (request, response) => {
@@ -26,14 +32,23 @@ export function createReceiptService(config = readServiceConfig()) {
 
 export async function routeRequest(request, response, config = readServiceConfig()) {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
+  const requestId = request.headers['x-request-id'] ?? nextRequestId();
+  const reply = (status, body) => sendJson(response, status, body, requestId);
+
+  logRequest(request, url, requestId);
 
   if (request.method === 'GET' && url.pathname === '/health') {
     const missing = validateServiceConfig(config);
-    sendJson(response, 200, {
+    reply(200, {
       ok: true,
       service: 'brew-receipt-service',
       configured: missing.length === 0,
       missing,
+      reviewConfigured: validateReviewComputeConfig(config.compute).length === 0,
+      reviewMissing: validateReviewComputeConfig(config.compute),
+      keeperHubWebhookConfigured:
+        validateKeeperHubWebhookConfig(config.keeperHubWebhook).length === 0,
+      keeperHubWebhookMissing: validateKeeperHubWebhookConfig(config.keeperHubWebhook),
     });
     return;
   }
@@ -41,42 +56,56 @@ export async function routeRequest(request, response, config = readServiceConfig
   if (request.method === 'POST' && url.pathname === '/review-receipt') {
     const auth = authError(request, config);
     if (auth) {
-      sendJson(response, auth.status, { error: auth.error });
+      reply(auth.status, { error: auth.error });
       return;
     }
 
     const missing = validateServiceConfig(config);
     if (missing.length > 0) {
-      sendJson(response, 200, { configured: false, missing });
+      reply(200, { configured: false, missing });
       return;
     }
 
     const body = await readJsonBody(request);
+    logReceiptRequestBody(requestId, body);
     const input = normalizeReviewReceiptInput(body);
     const validationError = validateReviewReceiptInput(input);
     if (validationError) {
-      sendJson(response, 400, { error: validationError });
+      reply(400, { error: validationError });
       return;
     }
 
-    const generated = await generateReviewReceipt(input, config);
-    sendJson(response, 200, {
-      configured: true,
-      ...generated,
+    const reviewedInput = input.runReviewSwarm
+      ? await inputFromReviewSwarm(input, config)
+      : input;
+    if (reviewedInput.reviewResult && !reviewedInput.reviewResult.releaseReady) {
+      reply(200, {
+        configured: true,
+        ...reviewedInput.reviewResult,
+      });
+      return;
+    }
+
+    const generated = await generateReviewReceipt(reviewedInput, config);
+    const responseBody = await buildReviewReceiptResponse({
+      reviewedInput,
+      generated,
+      config,
     });
+    reply(200, responseBody);
     return;
   }
 
   if (request.method === 'GET' && url.pathname.startsWith('/storage')) {
     const auth = authError(request, config);
     if (auth) {
-      sendJson(response, auth.status, { error: auth.error });
+      reply(auth.status, { error: auth.error });
       return;
     }
 
     const rootHashOrUri = storageRootFromUrl(url);
     if (!rootHashOrUri) {
-      sendJson(response, 400, { error: 'rootHash or uri is required' });
+      reply(400, { error: 'rootHash or uri is required' });
       return;
     }
 
@@ -85,11 +114,143 @@ export async function routeRequest(request, response, config = readServiceConfig
       indexerRpc: config.storage.indexerRpc,
       uriPrefix: config.storage.uriPrefix,
     });
-    sendJson(response, 200, receipt);
+    reply(200, receipt);
     return;
   }
 
-  sendJson(response, 404, { error: 'Not found' });
+  reply(404, { error: 'Not found' });
+}
+
+function nextRequestId() {
+  requestSequence += 1;
+  return `req-${Date.now().toString(36)}-${requestSequence.toString(36)}`;
+}
+
+function logRequest(request, url, requestId) {
+  console.log(
+    JSON.stringify({
+      event: 'http_request',
+      requestId,
+      method: request.method,
+      path: url.pathname,
+      contentType: request.headers['content-type'],
+      contentLength: request.headers['content-length'],
+      hasAuthorization: Boolean(request.headers.authorization),
+      at: new Date().toISOString(),
+    }),
+  );
+}
+
+function logReceiptRequestBody(requestId, body) {
+  console.log(
+    JSON.stringify({
+      event: 'review_receipt_body',
+      requestId,
+      trustId: safeScalar(body?.trustId),
+      source: safeScalar(body?.source),
+      runReviewSwarm: Boolean(body?.runReviewSwarm),
+      hasAttestationUid: Boolean(body?.attestationUid),
+      hasAgenticIds: Array.isArray(body?.agenticIds) && body.agenticIds.length > 0,
+      bodyKeys: body && typeof body === 'object' ? Object.keys(body).sort() : [],
+      at: new Date().toISOString(),
+    }),
+  );
+}
+
+function logResponse(requestId, status, body) {
+  console.log(
+    JSON.stringify({
+      event: 'http_response',
+      requestId,
+      status,
+      ok: status >= 200 && status < 300,
+      resultKeys: body && typeof body === 'object' ? Object.keys(body).sort() : [],
+      hasError: Boolean(body?.error),
+      releaseReady: typeof body?.releaseReady === 'boolean' ? body.releaseReady : undefined,
+      decision: safeScalar(body?.decision),
+      receiptRoot: safeScalar(body?.receiptRoot),
+      at: new Date().toISOString(),
+    }),
+  );
+}
+
+function safeScalar(value) {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+    ? value
+    : undefined;
+}
+
+async function inputFromReviewSwarm(input, config) {
+  const reviewInput = {
+    ...input,
+    agenticIds:
+      Array.isArray(input.agenticIds) && input.agenticIds.length > 0
+        ? input.agenticIds
+        : config.agenticIds,
+  };
+  const reviewResult = await runReviewSwarm(reviewInput, config.compute);
+  return {
+    ...reviewInput,
+    source: input.source || 'receipt-service-review-swarm',
+    review: {
+      mode: reviewResult.mode,
+      provider: reviewResult.provider,
+      votes: reviewResult.votes,
+      aggregate: reviewResult.aggregate,
+    },
+    agenticIds: reviewResult.agenticIds,
+    votes: reviewResult.votes,
+    aggregate: reviewResult.aggregate,
+    reviewResult,
+  };
+}
+
+export async function buildReviewReceiptResponse({
+  reviewedInput,
+  generated,
+  config,
+  triggerKeeperHub = triggerKeeperHubWebhook,
+}) {
+  const body = {
+    configured: true,
+    ...(reviewedInput.reviewResult ?? {}),
+    ...generated,
+  };
+
+  if (!reviewedInput.executeRelease) {
+    return body;
+  }
+
+  const keeperHubMissing = validateKeeperHubWebhookConfig(config.keeperHubWebhook);
+  if (keeperHubMissing.length > 0) {
+    return {
+      ...body,
+      keeperHubMissing,
+      keeperHubExecutionError: `KeeperHub webhook is not configured: ${keeperHubMissing.join(', ')}`,
+    };
+  }
+
+  try {
+    const keeperHubWebhook = await triggerKeeperHub({
+      input: reviewedInput,
+      reviewReceipt: generated.reviewReceipt,
+      coordinatorSignature: generated.coordinatorSignature,
+      receiptStorage: generated.receiptStorage,
+      receiptDigestInput: generated.receiptDigestInput,
+      config: config.keeperHubWebhook,
+    });
+    return {
+      ...body,
+      keeperHubWebhook,
+      keeperHubExecution: keeperHubWebhook,
+    };
+  } catch (error) {
+    return {
+      ...body,
+      keeperHubExecutionError:
+        error instanceof Error ? error.message : 'KeeperHub webhook failed',
+    };
+  }
 }
 
 function authError(request, config) {
@@ -143,7 +304,9 @@ function readJsonBody(request) {
   });
 }
 
-function sendJson(response, status, body) {
+function sendJson(response, status, body, requestId) {
+  if (requestId) logResponse(requestId, status, body);
+
   const payload = `${JSON.stringify(body, null, 2)}\n`;
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',

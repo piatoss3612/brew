@@ -124,9 +124,20 @@ export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }
             <EvidenceValue label="Provider" value={evidence.storage.provider} />
             <EvidenceValue label="Manifest" value={evidence.storage.manifestUri} />
             <EvidenceValue
-              label="Digest"
-              value={shortMaybeHash(evidence.receipt.receiptDigest)}
-              title={evidence.receipt.receiptDigest}
+              label="Root"
+              value={shortMaybeHash(evidence.storage.metadataRoot)}
+              title={evidence.storage.metadataRoot}
+            />
+            <EvidenceValue
+              label="Coordinator"
+              value={shortenMaybeAddress(evidence.storage.coordinator)}
+              title={evidence.storage.coordinator}
+            />
+            <EvidenceValue
+              label="Review tx"
+              value={shortMaybeHash(evidence.storage.reviewedTx)}
+              title={evidence.storage.reviewedTx}
+              link={evidence.storage.reviewedTx ? txLink(evidence.storage.reviewedTx) : undefined}
             />
             <EvidenceValue label="Receipt" value={evidence.storage.receiptKey} />
             <EvidenceValue label="Run status" value={evidence.receipt.keeperHubStatus} />

@@ -1,10 +1,10 @@
 import type { Address } from 'viem';
 
 export const BREW_ESCROW_ADDRESS =
-  '0xED5160554F93138c7f537bC1C99BFa475c97E622' as Address;
+  '0xE284fB280bc5A6c786b3B59621A3088Dc31f8bAb' as Address;
 
 export const BREW_VERIFIER_ADDRESS =
-  '0xE8a519bB3B47864c6aB49e97D6338DAF5217aF6a' as Address;
+  '0xe5b3217407cee7F5cDa16946A257bC362D785b56' as Address;
 
 export const BREW_TOKEN_ADDRESS =
   '0xee8f180727440e8068ec927ba181794a63b43741' as Address;
@@ -129,6 +129,23 @@ export const attestationVerifierAbi = [
       { name: 'trustId', type: 'uint256' },
       { name: 'beneficiary', type: 'address' },
       { name: 'attestationUid', type: 'bytes32' },
+      {
+        name: 'receipt',
+        type: 'tuple',
+        components: [
+          { name: 'trustId', type: 'uint256' },
+          { name: 'beneficiary', type: 'address' },
+          { name: 'attestationUid', type: 'bytes32' },
+          { name: 'templateId', type: 'bytes32' },
+          { name: 'receiptRoot', type: 'bytes32' },
+          { name: 'receiptUri', type: 'string' },
+          { name: 'coordinator', type: 'address' },
+          { name: 'verdict', type: 'uint8' },
+          { name: 'createdAt', type: 'uint64' },
+          { name: 'expiresAt', type: 'uint64' },
+        ],
+      },
+      { name: 'coordinatorSignature', type: 'bytes' },
     ],
     outputs: [],
   },

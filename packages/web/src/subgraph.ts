@@ -22,6 +22,11 @@ const BREW_STATUS_QUERY = `
       attestationUid
       verifiedAt
       verifiedTx
+      reviewReceiptRoot
+      reviewReceiptUri
+      reviewCoordinator
+      reviewedAt
+      reviewedTx
     }
     verifierConfigs(first: 1) {
       id
@@ -60,6 +65,11 @@ export type BrewTrust = {
   attestationUid: string | null;
   verifiedAt: string | null;
   verifiedTx: string | null;
+  reviewReceiptRoot: string | null;
+  reviewReceiptUri: string | null;
+  reviewCoordinator: string | null;
+  reviewedAt: string | null;
+  reviewedTx: string | null;
 };
 
 export type BrewTemplate = {

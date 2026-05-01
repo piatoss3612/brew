@@ -74,6 +74,9 @@ export async function generateReviewReceipt(input, config) {
     createdAt,
     expiresAt,
   });
+
+  assertReleaseRecommended(artifact.aggregate);
+
   const receiptStorage = await uploadJsonArtifactToZeroGStorage({
     artifact,
     privateKey: config.storage.privateKey,
@@ -179,6 +182,16 @@ export function normalizeReviewReceiptInput(body) {
     beneficiary: stringField(body, 'beneficiary'),
     attestationUid: stringField(body, 'attestationUid'),
     templateId: stringField(body, 'templateId'),
+    escrowAddress: optionalStringField(body, 'escrowAddress'),
+    verifierAddress: optionalStringField(body, 'verifierAddress'),
+    schemaUid: optionalStringField(body, 'schemaUid'),
+    token: optionalStringField(body, 'token'),
+    amount: optionalStringField(body, 'amount'),
+    deadline: optionalStringField(body, 'deadline'),
+    released: booleanField(body, 'released'),
+    refunded: booleanField(body, 'refunded'),
+    executeRelease: booleanField(body, 'executeRelease') === true,
+    runReviewSwarm: booleanField(body, 'runReviewSwarm') === true,
     source: stringField(body, 'source') || 'receipt-service',
     review: body && typeof body === 'object' ? body.review : undefined,
     agenticIds: arrayField(body, 'agenticIds'),
@@ -285,6 +298,12 @@ function normalizeAggregate(value, votes) {
     releaseReady: booleanField(value, 'releaseReady') ?? verdict === 'ReleaseRecommended',
     rationale: stringArrayField(value, 'rationale'),
   };
+}
+
+function assertReleaseRecommended(aggregate) {
+  if (aggregate.verdict !== 'ReleaseRecommended' || aggregate.releaseReady !== true) {
+    throw new Error('Review receipt cannot be signed unless the review aggregate is release-ready');
+  }
 }
 
 function inferredVerdict(votes) {
