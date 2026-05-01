@@ -7,7 +7,7 @@ import {
 
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_HOST = '127.0.0.1';
-export const DEFAULT_CHAIN_ID = 11155111;
+export const DEFAULT_CHAIN_ID = 84532;
 export const DEFAULT_ZERO_G_STORAGE_RPC_URL = 'https://evmrpc-testnet.0g.ai';
 export const DEFAULT_ZERO_G_STORAGE_INDEXER_RPC =
   'https://indexer-storage-testnet-turbo.0g.ai';

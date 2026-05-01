@@ -1,6 +1,6 @@
 # Brew Web
 
-Next.js app for the Brew demo on Ethereum Sepolia.
+Next.js app for the Brew demo on Base Sepolia.
 
 ## Release Flow
 
@@ -13,7 +13,7 @@ UI trigger
 -> receipt-service uploads ReviewReceipt artifact to 0G Storage
 -> receipt-service signs EIP-712 ReviewReceipt over the storage root
 -> receipt-service calls KeeperHub workflow webhook with the signed receipt
--> KeeperHub workflow calls AttestationVerifier.verifyAndRelease
+-> KeeperHub workflow calls AttestationVerifier.verifyAndReleaseWithReceiptFields
 -> UI receives reviewReceipt, coordinatorSignature, and KeeperHub workflow result
 ```
 

@@ -3,9 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-function txLink(hash: string) {
-  return `https://sepolia.etherscan.io/tx/${hash}`;
-}
+import { txExplorerUrl } from '../chain';
 
 function shortHash(value: string) {
   return `${value.slice(0, 10)}...${value.slice(-6)}`;
@@ -34,7 +32,7 @@ export function OverviewToast({ created, tx }: { created: boolean; tx?: string }
     <div className="toast" role="status" aria-live="polite">
       <strong>Trust created</strong>
       {tx ? (
-        <a href={txLink(tx)} target="_blank" rel="noreferrer">
+        <a href={txExplorerUrl(tx)} target="_blank" rel="noreferrer">
           {shortHash(tx)}
         </a>
       ) : null}

@@ -1,4 +1,5 @@
 export const BREW_SUBGRAPH_URL =
+  process.env.NEXT_PUBLIC_BREW_SUBGRAPH_URL ??
   'https://api.studio.thegraph.com/query/71401/brew/version/latest';
 
 const BREW_STATUS_QUERY = `

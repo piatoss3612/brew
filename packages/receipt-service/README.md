@@ -9,7 +9,7 @@ Web UI
 -> 0G Storage receipt artifact
 -> EIP-712 review receipt signature
 -> KeeperHub workflow webhook
--> KeeperHub workflow web3 action: AttestationVerifier.verifyAndRelease(...)
+-> KeeperHub workflow web3 action: AttestationVerifier.verifyAndReleaseWithReceiptFields(...)
 ```
 
 ```bash
@@ -169,8 +169,8 @@ Set these variables on the Railway service:
 ```bash
 railway variable set \
   HOST=0.0.0.0 \
-  BREW_VERIFIER_ADDRESS=0xe5b3217407cee7F5cDa16946A257bC362D785b56 \
-  BREW_REVIEW_RECEIPT_CHAIN_ID=11155111 \
+  BREW_VERIFIER_ADDRESS=0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062 \
+  BREW_REVIEW_RECEIPT_CHAIN_ID=84532 \
   BREW_REVIEW_RECEIPT_TTL_SECONDS=604800 \
   BREW_0G_STORAGE_RPC_URL=https://evmrpc-testnet.0g.ai \
   BREW_0G_STORAGE_INDEXER_RPC=https://indexer-storage-testnet-turbo.0g.ai \
@@ -333,7 +333,27 @@ BREW_REVIEW_RECEIPT_URL=https://receipt-service-production-189c.up.railway.app/r
 BREW_REVIEW_RECEIPT_API_KEY=<same API key>
 ```
 
-Configure the KeeperHub workflow webhook for the primary demo path. The web trigger asks receipt-service to run the review, store the receipt, sign it, and hand the signed payload to KeeperHub. KeeperHub performs the `verifyAndRelease` web3 action inside the workflow.
+Configure the KeeperHub workflow webhook for the primary demo path. The web trigger asks receipt-service to run the review, store the receipt, sign it, and hand the signed payload to KeeperHub. KeeperHub performs the `verifyAndReleaseWithReceiptFields` web3 action inside the workflow.
+
+KeeperHub Write Contract node:
+
+```text
+contract: <BREW_VERIFIER_ADDRESS>
+function: verifyAndReleaseWithReceiptFields
+trustId: {{Trigger.trustId}}
+beneficiary: {{Trigger.beneficiary}}
+attestationUid: {{Trigger.attestationUid}}
+receiptRoot: {{Trigger.reviewReceipt.receiptRoot}}
+receiptUri: {{Trigger.reviewReceipt.receiptUri}}
+coordinator: {{Trigger.reviewReceipt.coordinator}}
+createdAt: {{Trigger.reviewReceipt.createdAt}}
+expiresAt: {{Trigger.reviewReceipt.expiresAt}}
+coordinatorSignature: {{Trigger.coordinatorSignature}}
+```
+
+Do not use the legacy tuple-shaped `verifyAndRelease` action in KeeperHub. The
+flat function exists specifically because KeeperHub cannot reliably inject
+`{{...}}` expressions into tuple fields.
 
 Local kill-test:
 

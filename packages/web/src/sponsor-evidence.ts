@@ -408,7 +408,7 @@ export function normalizeKeeperHubExecution(input: {
     startedAt: input.execution?.startedAt,
     completedAt: input.execution?.completedAt,
     status: mapKeeperHubStatus(status),
-    action: 'verifyAndRelease(uint256,address,bytes32,ReviewReceipt,bytes)',
+    action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
     txHash,
     revertReason,
     nodeStatusSummary:
@@ -458,7 +458,7 @@ function simulateKeeperExecution(input: {
       executionMode: 'simulated',
       runId,
       status: 'completed',
-      action: 'verifyAndRelease(uint256,address,bytes32,ReviewReceipt,bytes)',
+      action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
       txHash: trust.verifiedTx ?? undefined,
       nodeStatusSummary: 'Simulated KeeperHub run completed after verifier accepted the EAS proof.',
       phases: [
@@ -475,7 +475,7 @@ function simulateKeeperExecution(input: {
         {
           name: 'execute',
           status: 'completed',
-          summary: 'Submitted verifyAndRelease with review receipt and observed the release transaction.',
+          summary: 'Submitted verifyAndReleaseWithReceiptFields with review receipt fields and observed the release transaction.',
         },
         {
           name: 'explain',
@@ -492,7 +492,7 @@ function simulateKeeperExecution(input: {
       executionMode: 'simulated',
       runId,
       status: 'blocked',
-      action: 'verifyAndRelease(uint256,address,bytes32,ReviewReceipt,bytes)',
+      action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
       revertReason: 'TrustAlreadyRefunded',
       nodeStatusSummary: 'Simulated KeeperHub run stopped because the trust is already refunded.',
       phases: [
@@ -525,7 +525,7 @@ function simulateKeeperExecution(input: {
       workflowId: KEEPER_WORKFLOW_ID,
       executionMode: 'simulated',
       status: 'waiting',
-      action: 'verifyAndRelease(uint256,address,bytes32,ReviewReceipt,bytes)',
+      action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
       nodeStatusSummary: 'Waiting for an attestation UID before KeeperHub can execute release.',
       phases: [
         {
@@ -557,7 +557,7 @@ function simulateKeeperExecution(input: {
     executionMode: 'simulated',
     runId,
     status: 'ready',
-    action: 'verifyAndRelease(uint256,address,bytes32,ReviewReceipt,bytes)',
+    action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
     nodeStatusSummary: 'Simulated KeeperHub preflight is ready to submit verifier execution.',
     phases: [
       {

@@ -1,7 +1,7 @@
 import { type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { sepolia } from 'viem/chains';
 
+import { BREW_CHAIN } from './chain';
 import { BREW_VERIFIER_ADDRESS } from './contracts';
 import type { ReviewReceiptPayload } from './sponsor-evidence';
 import {
@@ -151,7 +151,7 @@ export async function generateReviewReceipt(
     domain: {
       name: 'BrewReviewReceipt',
       version: '1',
-      chainId: sepolia.id,
+      chainId: BREW_CHAIN.id,
       verifyingContract: BREW_VERIFIER_ADDRESS,
     },
     types: REVIEW_RECEIPT_TYPES,

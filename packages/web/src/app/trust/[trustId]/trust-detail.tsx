@@ -19,8 +19,8 @@ import {
   useSwitchChain,
   useWriteContract,
 } from 'wagmi';
-import { sepolia } from 'wagmi/chains';
 
+import { BREW_CHAIN } from '../../../chain';
 import {
   BREW_ESCROW_ADDRESS,
   BREW_VERIFIER_ADDRESS,
@@ -96,19 +96,6 @@ type SchemaRecord = {
 type SchemaField = {
   type: string;
   name: string;
-};
-
-type ReviewReceiptContractInput = {
-  trustId: bigint;
-  beneficiary: Address;
-  attestationUid: Hex;
-  templateId: Hex;
-  receiptRoot: Hex;
-  receiptUri: string;
-  coordinator: Address;
-  verdict: number;
-  createdAt: bigint;
-  expiresAt: bigint;
 };
 
 const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
@@ -202,21 +189,6 @@ function parseReviewReceiptJson(value: string) {
 
 function reviewReceiptJson(receipt: ReviewReceiptPayload | undefined) {
   return receipt ? JSON.stringify(receipt, null, 2) : '';
-}
-
-function reviewReceiptContractInput(receipt: ReviewReceiptPayload): ReviewReceiptContractInput {
-  return {
-    trustId: BigInt(receipt.trustId),
-    beneficiary: receipt.beneficiary as Address,
-    attestationUid: receipt.attestationUid as Hex,
-    templateId: receipt.templateId as Hex,
-    receiptRoot: receipt.receiptRoot as Hex,
-    receiptUri: receipt.receiptUri,
-    coordinator: receipt.coordinator as Address,
-    verdict: receipt.verdict,
-    createdAt: BigInt(receipt.createdAt),
-    expiresAt: BigInt(receipt.expiresAt),
-  };
 }
 
 function readSchemaRecord(value: unknown): SchemaRecord | null {
@@ -644,13 +616,13 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             address: tokenAddress,
             abi: erc20Abi,
             functionName: 'symbol',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
           },
           {
             address: tokenAddress,
             abi: erc20Abi,
             functionName: 'decimals',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
           },
         ]
       : [],
@@ -666,7 +638,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             address: EAS_SCHEMA_REGISTRY_ADDRESS,
             abi: schemaRegistryAbi,
             functionName: 'getSchema',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
             args: [schemaUid],
           },
         ]
@@ -682,7 +654,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             address: BREW_VERIFIER_ADDRESS,
             abi: attestationVerifierAbi,
             functionName: 'isIssuerAllowed',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
             args: [trust.templateId, address],
           },
         ]
@@ -724,7 +696,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     : defaultCoordinatorSignature;
   const trimmedCoordinatorSignature = displayedCoordinatorSignature.trim();
   const coordinatorSignatureReady = isSignature(trimmedCoordinatorSignature);
-  const needsNetworkSwitch = isConnected && chainId !== sepolia.id;
+  const needsNetworkSwitch = isConnected && chainId !== BREW_CHAIN.id;
   const deadlineSeconds = readDeadlineSeconds(trust?.deadline);
   const isSponsor = isSameAddress(trust?.sponsor ?? '', address);
   const isBeneficiary = isSameAddress(trust?.beneficiary ?? '', address);
@@ -833,9 +805,9 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     setActiveAction('attest');
 
     try {
-      if (chainId !== sepolia.id) {
+      if (chainId !== BREW_CHAIN.id) {
         setStep('switching');
-        await switchChainAsync({ chainId: sepolia.id });
+        await switchChainAsync({ chainId: BREW_CHAIN.id });
       }
 
       const encodedData = encodeAttestationData(schemaFields, attestationFieldValues);
@@ -845,7 +817,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         address: EAS_ADDRESS,
         abi: easAbi,
         functionName: 'attest',
-        chainId: sepolia.id,
+        chainId: BREW_CHAIN.id,
         args: [
           {
             schema: schemaUid,
@@ -906,23 +878,27 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     setActiveAction('release');
 
     try {
-      if (chainId !== sepolia.id) {
+      if (chainId !== BREW_CHAIN.id) {
         setStep('switching');
-        await switchChainAsync({ chainId: sepolia.id });
+        await switchChainAsync({ chainId: BREW_CHAIN.id });
       }
 
       setStep('verifying');
       const nextReleaseHash = await writeContractAsync({
         address: BREW_VERIFIER_ADDRESS,
         abi: attestationVerifierAbi,
-        functionName: 'verifyAndRelease',
-        chainId: sepolia.id,
+        functionName: 'verifyAndReleaseWithReceiptFields',
+        chainId: BREW_CHAIN.id,
         args: [
           BigInt(trust.trustId),
           beneficiaryAddress,
           trimmedAttestationUid,
-          reviewReceiptContractInput(reviewReceipt),
-          trimmedCoordinatorSignature,
+          reviewReceipt.receiptRoot as Hex,
+          reviewReceipt.receiptUri,
+          reviewReceipt.coordinator as Address,
+          BigInt(reviewReceipt.createdAt),
+          BigInt(reviewReceipt.expiresAt),
+          trimmedCoordinatorSignature as Hex,
         ],
       });
       setReleaseHash(nextReleaseHash);
@@ -1018,9 +994,9 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     setActiveAction('refund');
 
     try {
-      if (chainId !== sepolia.id) {
+      if (chainId !== BREW_CHAIN.id) {
         setStep('switching');
-        await switchChainAsync({ chainId: sepolia.id });
+        await switchChainAsync({ chainId: BREW_CHAIN.id });
       }
 
       setStep('refunding');
@@ -1028,7 +1004,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         address: BREW_ESCROW_ADDRESS,
         abi: brewEscrowAbi,
         functionName: 'refund',
-        chainId: sepolia.id,
+        chainId: BREW_CHAIN.id,
         args: [BigInt(trust.trustId)],
       });
       setRefundHash(nextRefundHash);

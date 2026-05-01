@@ -9,7 +9,7 @@ import {
 test('readServiceConfig maps optional KeeperHub webhook config', () => {
   const config = readServiceConfig({
     BREW_REVIEW_COORDINATOR_PRIVATE_KEY: `0x${'11'.repeat(32)}`,
-    BREW_VERIFIER_ADDRESS: '0xe5b3217407cee7F5cDa16946A257bC362D785b56',
+    BREW_VERIFIER_ADDRESS: '0x1111111111111111111111111111111111111111',
     BREW_0G_STORAGE_PRIVATE_KEY: `0x${'22'.repeat(32)}`,
     KEEPERHUB_WEBHOOK_URL: 'https://keeperhub.example/webhooks/brew-release',
     KEEPERHUB_WEBHOOK_API_KEY: 'kh_webhook_secret',
@@ -55,7 +55,7 @@ test('readServiceConfig maps optional KeeperHub webhook config', () => {
 test('readServiceConfig keeps KeeperHub webhook optional for receipt-only operation', () => {
   const config = readServiceConfig({
     BREW_REVIEW_COORDINATOR_PRIVATE_KEY: `0x${'11'.repeat(32)}`,
-    BREW_VERIFIER_ADDRESS: '0xe5b3217407cee7F5cDa16946A257bC362D785b56',
+    BREW_VERIFIER_ADDRESS: '0x1111111111111111111111111111111111111111',
     BREW_0G_STORAGE_PRIVATE_KEY: `0x${'22'.repeat(32)}`,
   });
 

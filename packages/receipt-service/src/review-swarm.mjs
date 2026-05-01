@@ -102,7 +102,7 @@ function buildReviewContext(input) {
     attestationUid: input.attestationUid,
     templateReference: 'templateId read from onchain BrewEscrow trust state',
     templateRegistrationEvidence:
-      'The verifier contract performs authoritative template and EAS checks during verifyAndRelease.',
+      'The verifier contract performs authoritative template and EAS checks during verifyAndReleaseWithReceiptFields.',
     escrowAddress: optionalAddress(input.escrowAddress),
     verifierAddress: optionalAddress(input.verifierAddress),
     schemaUid: optionalBytes32(input.schemaUid),

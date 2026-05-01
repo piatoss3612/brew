@@ -11,18 +11,11 @@ export function buildVerifyAndReleaseArgs({ input, reviewReceipt, coordinatorSig
     input.trustId,
     input.beneficiary,
     input.attestationUid,
-    [
-      reviewReceipt.trustId,
-      reviewReceipt.beneficiary,
-      reviewReceipt.attestationUid,
-      reviewReceipt.templateId,
-      reviewReceipt.receiptRoot,
-      reviewReceipt.receiptUri,
-      reviewReceipt.coordinator,
-      reviewReceipt.verdict,
-      reviewReceipt.createdAt,
-      reviewReceipt.expiresAt,
-    ],
+    reviewReceipt.receiptRoot,
+    reviewReceipt.receiptUri,
+    reviewReceipt.coordinator,
+    reviewReceipt.createdAt,
+    reviewReceipt.expiresAt,
     coordinatorSignature,
   ];
 }
@@ -36,7 +29,7 @@ export function buildKeeperHubWebhookPayload({
 }) {
   return withoutUndefined({
     source: 'brew-receipt-service',
-    action: 'verifyAndRelease',
+    action: 'verifyAndReleaseWithReceiptFields',
     trustId: input.trustId,
     beneficiary: input.beneficiary,
     attestationUid: input.attestationUid,
@@ -46,7 +39,7 @@ export function buildKeeperHubWebhookPayload({
     receiptStorage,
     receiptDigestInput,
     contractCall: {
-      functionName: 'verifyAndRelease',
+      functionName: 'verifyAndReleaseWithReceiptFields',
       args: buildVerifyAndReleaseArgs({ input, reviewReceipt, coordinatorSignature }),
     },
   });

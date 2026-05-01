@@ -12,7 +12,7 @@ Webhook
   -> ReadTrust: read BrewEscrow trust state
   -> Code: prepare the agent review request
   -> HTTP Request: request a signed review receipt
-  -> Write Contract: verifyAndRelease(...)
+  -> Write Contract: verifyAndReleaseWithReceiptFields(...)
 ```
 
 Initially, the Code node attempted to call the 0G Compute proxy endpoint:
@@ -82,7 +82,7 @@ KeeperHub HTTP Request node
 This is the intended safe path, but it also exposed a second UX issue below.
 Brew's current implementation uses receipt-service as the review/receipt
 orchestrator and then calls a KeeperHub workflow webhook. The KeeperHub workflow
-performs the `verifyAndRelease(...)` web3 action.
+performs the `verifyAndReleaseWithReceiptFields(...)` web3 action.
 
 ### Requested improvement
 
@@ -192,17 +192,17 @@ service." Brew moved the primary demo away from this node composition and uses:
 Web trigger
   -> receipt-service: 0G Compute + 0G Storage + signed receipt
   -> KeeperHub workflow webhook
-  -> KeeperHub web3 action: verifyAndRelease(...)
+  -> KeeperHub web3 action: verifyAndReleaseWithReceiptFields(...)
 ```
 
 ## Read Contract output for tuple/struct return values
 
 ### Context
 
-Brew uses KeeperHub to run an onchain release workflow on Sepolia.
+Brew uses KeeperHub to run an onchain release workflow.
 
 The workflow reads `BrewEscrow.trusts(uint256)` before calling
-`AttestationVerifier.verifyAndRelease(uint256,address,bytes32)`.
+`AttestationVerifier.verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)`.
 
 Contract:
 
@@ -374,7 +374,7 @@ For Brew, this matters because the intended workflow is:
 Webhook
   -> ReadTrust: BrewEscrow.trusts(trustId)
   -> Condition: released == false && refunded == false
-  -> Write Contract: verifyAndRelease(trustId, beneficiary, attestationUid)
+  -> Write Contract: verifyAndReleaseWithReceiptFields(trustId, beneficiary, attestationUid, receiptRoot, receiptUri, coordinator, createdAt, expiresAt, signature)
 ```
 
 Without explicit struct decoding from the auto-fetched ABI, the workflow either

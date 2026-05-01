@@ -1,5 +1,7 @@
 import { formatUnits } from 'viem';
 
+import { txExplorerUrl } from './chain';
+
 export const statusLabels = {
   PENDING: 'Pending',
   RELEASED: 'Released',
@@ -70,5 +72,5 @@ export function getWalletTrustRole(sponsor: string, beneficiary: string, address
 }
 
 export function txLink(hash: string) {
-  return `https://sepolia.etherscan.io/tx/${hash}`;
+  return txExplorerUrl(hash);
 }

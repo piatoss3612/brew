@@ -9,7 +9,7 @@ const INCOMPLETE_CONFIG = {
   coordinatorPrivateKey: undefined,
   coordinatorAddress: undefined,
   verifierAddress: undefined,
-  chainId: 11155111,
+  chainId: 84532,
   ttlSeconds: 604800,
   storage: {
     privateKey: undefined,

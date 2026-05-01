@@ -12,8 +12,8 @@ import {
   useSwitchChain,
   useWriteContract,
 } from 'wagmi';
-import { sepolia } from 'wagmi/chains';
 
+import { BREW_CHAIN, BREW_CHAIN_NAME, txExplorerUrl } from '../../../chain';
 import {
   BREW_ESCROW_ADDRESS,
   BREW_TOKEN_ADDRESS,
@@ -106,7 +106,7 @@ function CopyableValue({
 }
 
 function txLink(hash: string) {
-  return `https://sepolia.etherscan.io/tx/${hash}`;
+  return txExplorerUrl(hash);
 }
 
 function shortHash(value: string) {
@@ -290,7 +290,7 @@ export function SponsorNewForm() {
             address: EAS_SCHEMA_REGISTRY_ADDRESS,
             abi: schemaRegistryAbi,
             functionName: 'getSchema',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
             args: [resolvedSchemaUid],
           },
         ]
@@ -310,19 +310,19 @@ export function SponsorNewForm() {
             address: tokenAddress,
             abi: erc20Abi,
             functionName: 'name',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
           },
           {
             address: tokenAddress,
             abi: erc20Abi,
             functionName: 'symbol',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
           },
           {
             address: tokenAddress,
             abi: erc20Abi,
             functionName: 'decimals',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
           },
         ]
       : [],
@@ -367,14 +367,14 @@ export function SponsorNewForm() {
             address: tokenAddress,
             abi: erc20Abi,
             functionName: 'balanceOf',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
             args: [address],
           },
           {
             address: tokenAddress,
             abi: erc20Abi,
             functionName: 'allowance',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
             args: [address, BREW_ESCROW_ADDRESS],
           },
         ]
@@ -391,7 +391,7 @@ export function SponsorNewForm() {
   const hasEnoughAllowance =
     typeof allowance === 'bigint' && amountUnits > ZERO && allowance >= amountUnits;
   const hasEnoughBalance = balanceKnown && amountUnits > ZERO && balance >= amountUnits;
-  const needsNetworkSwitch = isConnected && chainId !== sepolia.id;
+  const needsNetworkSwitch = isConnected && chainId !== BREW_CHAIN.id;
   const canSubmit =
     isConnected &&
     Boolean(publicClient) &&
@@ -438,9 +438,9 @@ export function SponsorNewForm() {
     setCreateHash(null);
 
     try {
-      if (chainId !== sepolia.id) {
+      if (chainId !== BREW_CHAIN.id) {
         setStep('switching');
-        await switchChainAsync({ chainId: sepolia.id });
+        await switchChainAsync({ chainId: BREW_CHAIN.id });
       }
 
       if (!hasEnoughAllowance) {
@@ -449,7 +449,7 @@ export function SponsorNewForm() {
           address: tokenAddress,
           abi: erc20Abi,
           functionName: 'approve',
-          chainId: sepolia.id,
+          chainId: BREW_CHAIN.id,
           args: [BREW_ESCROW_ADDRESS, amountUnits],
         });
         setApproveHash(nextApproveHash);
@@ -462,7 +462,7 @@ export function SponsorNewForm() {
         address: BREW_ESCROW_ADDRESS,
         abi: brewEscrowAbi,
         functionName: 'createTrust',
-        chainId: sepolia.id,
+        chainId: BREW_CHAIN.id,
         args: [
           resolvedBeneficiary,
           tokenAddress,
@@ -680,7 +680,7 @@ export function SponsorNewForm() {
         <p className="form-note">Enter a valid ERC20 token address.</p>
       ) : null}
       {tokenAddress && metadataReads.isLoading ? (
-        <p className="form-note">Reading ERC20 metadata on Sepolia.</p>
+        <p className="form-note">Reading ERC20 metadata on {BREW_CHAIN_NAME}.</p>
       ) : null}
       {tokenReads.error instanceof Error ? (
         <p className="data-error">{tokenReads.error.message}</p>
@@ -693,7 +693,7 @@ export function SponsorNewForm() {
         <p className="form-note">No verifier templates are indexed yet.</p>
       ) : null}
       {selectedTemplate && schemaReads.isLoading ? (
-        <p className="form-note">Reading EAS schema fields on Sepolia.</p>
+        <p className="form-note">Reading EAS schema fields on {BREW_CHAIN_NAME}.</p>
       ) : null}
       {schemaReads.error instanceof Error ? (
         <p className="data-error">{schemaReads.error.message}</p>

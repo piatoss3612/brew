@@ -53,7 +53,7 @@ test('buildKeeperHubWebhookPayload preserves the full signed release payload for
     },
   });
 
-  assert.equal(payload.action, 'verifyAndRelease');
+  assert.equal(payload.action, 'verifyAndReleaseWithReceiptFields');
   assert.equal(payload.trustId, INPUT.trustId);
   assert.equal(payload.beneficiary, INPUT.beneficiary);
   assert.equal(payload.attestationUid, INPUT.attestationUid);
@@ -61,23 +61,16 @@ test('buildKeeperHubWebhookPayload preserves the full signed release payload for
   assert.deepEqual(payload.reviewReceipt, REVIEW_RECEIPT);
   assert.equal(payload.coordinatorSignature, '0xsignature');
   assert.deepEqual(payload.contractCall, {
-    functionName: 'verifyAndRelease',
+    functionName: 'verifyAndReleaseWithReceiptFields',
     args: [
       INPUT.trustId,
       INPUT.beneficiary,
       INPUT.attestationUid,
-      [
-        REVIEW_RECEIPT.trustId,
-        REVIEW_RECEIPT.beneficiary,
-        REVIEW_RECEIPT.attestationUid,
-        REVIEW_RECEIPT.templateId,
-        REVIEW_RECEIPT.receiptRoot,
-        REVIEW_RECEIPT.receiptUri,
-        REVIEW_RECEIPT.coordinator,
-        REVIEW_RECEIPT.verdict,
-        REVIEW_RECEIPT.createdAt,
-        REVIEW_RECEIPT.expiresAt,
-      ],
+      REVIEW_RECEIPT.receiptRoot,
+      REVIEW_RECEIPT.receiptUri,
+      REVIEW_RECEIPT.coordinator,
+      REVIEW_RECEIPT.createdAt,
+      REVIEW_RECEIPT.expiresAt,
       '0xsignature',
     ],
   });
@@ -116,7 +109,7 @@ test('triggerKeeperHubWebhook posts the receipt payload to the configured Keeper
   assert.equal(calls[0].init.headers['x-api-key'], 'kh_webhook_secret');
 
   const body = JSON.parse(calls[0].init.body);
-  assert.equal(body.action, 'verifyAndRelease');
+  assert.equal(body.action, 'verifyAndReleaseWithReceiptFields');
   assert.equal(body.reviewReceipt.receiptRoot, REVIEW_RECEIPT.receiptRoot);
-  assert.equal(body.contractCall.functionName, 'verifyAndRelease');
+  assert.equal(body.contractCall.functionName, 'verifyAndReleaseWithReceiptFields');
 });

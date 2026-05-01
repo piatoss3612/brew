@@ -3,8 +3,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { isAddress, type Address } from 'viem';
 import { useReadContracts } from 'wagmi';
-import { sepolia } from 'wagmi/chains';
 
+import { BREW_CHAIN } from '../chain';
 import { erc20Abi } from '../contracts';
 import { formatTrustAmount, readDecimals, readString, shortenAddress, statusLabels } from '../format';
 import { fetchBrewStatus, type BrewTrust } from '../subgraph';
@@ -54,13 +54,13 @@ export function TrustWorkflow() {
             address: latestTokenAddress,
             abi: erc20Abi,
             functionName: 'symbol',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
           },
           {
             address: latestTokenAddress,
             abi: erc20Abi,
             functionName: 'decimals',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
           },
         ]
       : [],
