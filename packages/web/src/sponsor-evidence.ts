@@ -118,6 +118,27 @@ export type KeeperHubTriggerPayload = {
   schemaUid?: string;
 };
 
+export type ReviewReceiptPayload = {
+  trustId: string;
+  beneficiary: string;
+  attestationUid: string;
+  templateId: string;
+  receiptRoot: string;
+  receiptUri: string;
+  coordinator: string;
+  verdict: number;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type ReviewReceiptStoragePayload = {
+  rootHash: string;
+  uri: string;
+  byteSize: number;
+  attempts: number;
+  txHash?: string;
+};
+
 export type KeeperHubTriggerApiResponse =
   | {
       configured: false;
@@ -128,6 +149,12 @@ export type KeeperHubTriggerApiResponse =
       workflowId?: string;
       executionId?: string;
       runId?: string;
+      reviewReceipt?: ReviewReceiptPayload;
+      coordinatorSignature?: string;
+      reviewReceiptSource?: 'keeperhub-workflow' | 'trigger-api-fallback';
+      receiptError?: string;
+      receiptDigestInput?: unknown;
+      receiptStorage?: ReviewReceiptStoragePayload;
       status?: string;
       raw: unknown;
     };
