@@ -661,9 +661,17 @@ export function buildSponsorEvidence(input: {
   connectedIssuer?: string;
   keeperExecution?: KeeperExecutionResult;
   receiptStorage?: ReviewReceiptStoragePayload;
+  storageSubmissionSequence?: number;
 }): SponsorEvidence {
-  const { trust, template, attestationUid, connectedIssuer, keeperExecution, receiptStorage } =
-    input;
+  const {
+    trust,
+    template,
+    attestationUid,
+    connectedIssuer,
+    keeperExecution,
+    receiptStorage,
+    storageSubmissionSequence,
+  } = input;
   const effectiveAttestationUid = attestationUid ?? trust.attestationUid ?? undefined;
   const keeperInput = buildKeeperInput(trust, template, effectiveAttestationUid);
   const resolvedKeeperExecution =
@@ -714,7 +722,7 @@ export function buildSponsorEvidence(input: {
       receiptKey: receipt.key,
       coordinator: trust.reviewCoordinator ?? undefined,
       reviewedTx: trust.reviewedTx ?? undefined,
-      submissionSequence: receiptStorage?.txSeq,
+      submissionSequence: receiptStorage?.txSeq ?? storageSubmissionSequence,
     },
     receipt,
     verifier: {

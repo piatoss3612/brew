@@ -50,6 +50,7 @@ test('buildKeeperHubWebhookPayload sends only trigger-only release fields to Kee
       uri: REVIEW_RECEIPT.receiptUri,
       byteSize: 1234,
       attempts: 1,
+      txSeq: 47,
     },
   });
 
@@ -65,6 +66,7 @@ test('buildKeeperHubWebhookPayload sends only trigger-only release fields to Kee
   assert.equal(payload.coordinatorSignature, '0xsignature');
   assert.equal(payload.receiptStorageRootHash, REVIEW_RECEIPT.receiptRoot);
   assert.equal(payload.receiptStorageUri, REVIEW_RECEIPT.receiptUri);
+  assert.equal(payload.receiptStorageTxSeq, 47);
   assert.equal('beneficiary' in payload, false);
   assert.equal('templateId' in payload, false);
   assert.equal('reviewReceipt' in payload, false);

@@ -726,10 +726,14 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         rootHash: receiptStorageRoot,
         uri: receiptStorageUri,
       }),
-    enabled: receiptArtifactOpen && Boolean(receiptStorageRoot || receiptStorageUri),
+    enabled: Boolean(receiptStorageRoot || receiptStorageUri),
     refetchOnWindowFocus: false,
     staleTime: Infinity,
   });
+  const receiptArtifactTxSeq =
+    typeof receiptArtifactQuery.data?.txSeq === 'number'
+      ? receiptArtifactQuery.data.txSeq
+      : undefined;
 
   const tokenAddress = trust && isAddress(trust.token) ? (trust.token as Address) : undefined;
   const beneficiaryAddress =
@@ -1173,6 +1177,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         ? keeperHubQuery.data.keeperExecution
         : undefined,
     receiptStorage: storedKeeperHubExecution?.receiptStorage,
+    storageSubmissionSequence: receiptArtifactTxSeq,
   });
 
   return (

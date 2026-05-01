@@ -99,6 +99,7 @@ export async function downloadJsonArtifactFromZeroGStorage(options) {
 
   try {
     const indexer = new Indexer(options.indexerRpc);
+    const txSeq = await resolveStorageTxSeq(indexer, rootHash);
     const downloadError = await indexer.download(rootHash, tempFile, options.proof ?? false);
     if (downloadError) throw new Error(`0G Storage download error: ${downloadError.message}`);
 
@@ -108,6 +109,7 @@ export async function downloadJsonArtifactFromZeroGStorage(options) {
       rootHash,
       uri: formatZeroGStorageUri(options.uriPrefix, rootHash),
       byteSize: Buffer.byteLength(content, 'utf8'),
+      txSeq,
       artifact: JSON.parse(content),
       rawContent: content,
     };
@@ -166,6 +168,33 @@ export function readUploadTxSeq(uploadResult) {
 
   const sequence = Number(raw);
   return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : undefined;
+}
+
+export function readFileInfoTxSeq(fileInfo) {
+  if (!fileInfo || typeof fileInfo !== 'object') return undefined;
+  const raw =
+    fileInfo.tx?.seq ??
+    fileInfo.txSeq ??
+    fileInfo.sequence ??
+    fileInfo.submissionIndex;
+  if (raw === undefined || raw === null || raw === '') return undefined;
+
+  const sequence = Number(raw);
+  return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : undefined;
+}
+
+async function resolveStorageTxSeq(indexer, rootHash) {
+  try {
+    const [downloader, downloaderError] = await indexer.newDownloaderFromIndexerNodes(rootHash);
+    if (downloaderError || !downloader) return undefined;
+
+    const [fileInfo, fileInfoError] = await downloader.queryFile(rootHash);
+    if (fileInfoError || !fileInfo) return undefined;
+
+    return readFileInfoTxSeq(fileInfo);
+  } catch {
+    return undefined;
+  }
 }
 
 function delay(ms) {

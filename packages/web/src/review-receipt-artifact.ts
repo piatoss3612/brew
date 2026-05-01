@@ -1,7 +1,16 @@
+export type ReviewReceiptArtifactPayload = {
+  rootHash?: string;
+  uri?: string;
+  byteSize?: number;
+  txSeq?: number;
+  artifact?: unknown;
+  rawContent?: string;
+};
+
 export async function fetchReviewReceiptArtifact(input: {
   rootHash?: string | null;
   uri?: string | null;
-}) {
+}): Promise<ReviewReceiptArtifactPayload> {
   const params = new URLSearchParams();
 
   if (input.rootHash) {
@@ -23,5 +32,5 @@ export async function fetchReviewReceiptArtifact(input: {
     throw new Error(message);
   }
 
-  return payload as unknown;
+  return payload as ReviewReceiptArtifactPayload;
 }

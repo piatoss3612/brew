@@ -26,6 +26,7 @@ export function buildKeeperHubWebhookPayload({
     coordinatorSignature,
     receiptStorageRootHash: receiptStorage?.rootHash,
     receiptStorageUri: receiptStorage?.uri,
+    receiptStorageTxSeq: receiptStorage?.txSeq,
   });
 }
 
