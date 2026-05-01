@@ -2,16 +2,31 @@ import type { Address } from 'viem';
 
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
+const DEFAULT_BREW_ESCROW_ADDRESS =
+  '0xBB3e0B8f1F31e1dDac553A43F1fcEe305Cff38f2' as Address;
+const DEFAULT_BREW_VERIFIER_ADDRESS =
+  '0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062' as Address;
+const DEFAULT_BREW_TOKEN_ADDRESS =
+  '0x63C972A697dfC788EadC61D9BDd4bcFeb2aBdF7C' as Address;
 
 function publicAddress(value: string | undefined, fallback: Address = ZERO_ADDRESS) {
   return value && ADDRESS_PATTERN.test(value) ? (value as Address) : fallback;
 }
 
-export const BREW_ESCROW_ADDRESS = publicAddress(process.env.NEXT_PUBLIC_BREW_ESCROW_ADDRESS);
+export const BREW_ESCROW_ADDRESS = publicAddress(
+  process.env.NEXT_PUBLIC_BREW_ESCROW_ADDRESS,
+  DEFAULT_BREW_ESCROW_ADDRESS,
+);
 
-export const BREW_VERIFIER_ADDRESS = publicAddress(process.env.NEXT_PUBLIC_BREW_VERIFIER_ADDRESS);
+export const BREW_VERIFIER_ADDRESS = publicAddress(
+  process.env.NEXT_PUBLIC_BREW_VERIFIER_ADDRESS,
+  DEFAULT_BREW_VERIFIER_ADDRESS,
+);
 
-export const BREW_TOKEN_ADDRESS = publicAddress(process.env.NEXT_PUBLIC_BREW_TOKEN_ADDRESS);
+export const BREW_TOKEN_ADDRESS = publicAddress(
+  process.env.NEXT_PUBLIC_BREW_TOKEN_ADDRESS,
+  DEFAULT_BREW_TOKEN_ADDRESS,
+);
 
 export const EAS_ADDRESS =
   '0x4200000000000000000000000000000000000021' as Address;
