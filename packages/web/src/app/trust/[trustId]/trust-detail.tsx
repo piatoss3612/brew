@@ -110,6 +110,7 @@ const ATTESTATION_DRAFT_STORAGE_EVENT = 'brew:attestation-draft-storage';
 const ATTESTATION_DRAFT_STORAGE_PREFIX = 'brew:attestation-draft:v1';
 const KEEPERHUB_EXECUTION_STORAGE_EVENT = 'brew:keeperhub-execution-storage';
 const KEEPERHUB_EXECUTION_STORAGE_PREFIX = 'brew:keeperhub-execution:v1';
+const STORAGE_SCAN_GALILEO_URL = 'https://storagescan-galileo.0g.ai';
 const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as Hex;
 const DEFAULT_FIELD_VALUES: Record<string, string> = {
   conferral_date: '1704067200',
@@ -406,6 +407,10 @@ function keeperHubExecutionStorageKey(trustId: string) {
 
 function attestationDraftStorageKey(trustId: string) {
   return `${ATTESTATION_DRAFT_STORAGE_PREFIX}:${trustId}`;
+}
+
+function storageScanSubmissionLink(sequence: number) {
+  return `${STORAGE_SCAN_GALILEO_URL}/submission/${sequence}`;
 }
 
 function optionalString(value: unknown, key: string) {
@@ -1293,6 +1298,21 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                 </button>
               ) : (
                 <strong>-</strong>
+              )}
+            </div>
+            <div>
+              <span className="data-label">StorageScan</span>
+              {receiptArtifactTxSeq !== undefined ? (
+                <a
+                  className="tx-link"
+                  href={storageScanSubmissionLink(receiptArtifactTxSeq)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open submission {receiptArtifactTxSeq}
+                </a>
+              ) : (
+                <strong>Resolving submission</strong>
               )}
             </div>
             <div>
