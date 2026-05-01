@@ -1,29 +1,80 @@
-This is a [RainbowKit](https://rainbowkit.com) + [wagmi](https://wagmi.sh) + [Next.js](https://nextjs.org/) project bootstrapped with [`create-rainbowkit`](/packages/create-rainbowkit).
+# Brew Web
 
-## Getting Started
+Next.js app for the Brew demo on Ethereum Sepolia.
 
-First, run the development server:
+## KeeperHub Release Flow
 
-```bash
-npm run dev
+KeeperHub is the release workflow boundary:
+
+```text
+UI trigger
+-> KeeperHub webhook
+-> ReadTrust
+-> 0G Compute Evidence / Policy / Risk review swarm
+-> receipt-service /review-receipt uploads ReviewReceipt artifact to 0G Storage
+-> receipt-service signs EIP-712 ReviewReceipt over the storage root
+-> UI receives reviewReceipt + coordinatorSignature
+-> beneficiary calls verifyAndRelease
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The coordinator private key stays in `packages/receipt-service`. Do not paste it into the KeeperHub Code node. The AI review is advisory; `AttestationVerifier` and `BrewEscrow` remain the release authority. `receiptRoot` is the 0G Storage root of the persisted review artifact.
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+## Setup
 
-## Learn More
+```bash
+yarn install
+cp .env.example .env.local
+yarn dev
+```
 
-To learn more about this stack, take a look at the following resources:
+Generate the KeeperHub Code node snippet:
 
-- [RainbowKit Documentation](https://rainbowkit.com) - Learn how to customize your wallet connection flow.
-- [wagmi Documentation](https://wagmi.sh) - Learn how to interact with Ethereum.
-- [Next.js Documentation](https://nextjs.org/docs) - Learn how to build a Next.js application.
+```bash
+yarn print:keeperhub-0g-code
+```
 
-You can check out [the RainbowKit GitHub repository](https://github.com/rainbow-me/rainbowkit) - your feedback and contributions are welcome!
+The generated Code node runs three 0G Compute review agents: `Evidence`, `Policy`, and `Risk`. It sends `agenticIds`, `votes`, and `aggregate` to `packages/receipt-service`, which stores a `BrewSwarmReviewBundle` on 0G Storage and signs the resulting root.
 
-## Deploy on Vercel
+Inline configured secrets only for a controlled demo environment:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+yarn print:keeperhub-0g-code --with-secret
+```
 
-Check out the [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+Validate 0G Compute before wiring the KeeperHub workflow:
+
+```bash
+yarn killtest:0g-review --mode direct
+yarn killtest:0g-review --mode sdk
+```
+
+Validate 0G Storage receipt persistence:
+
+```bash
+yarn test:0g-storage
+yarn killtest:0g-storage-receipt --dry-run
+yarn killtest:0g-storage-receipt \
+  --trust-id 1 \
+  --beneficiary 0x64dF96071ED800100E85B567add2B2e5190b0F0b \
+  --template-id 0xa9d8d2ecfc304dc01f929851a2d337e70f772b9e87c59ef8809f01f29209d251 \
+  --attestation-uid 0x7db69265beea1b23038df24fc6fa3186dc60877fb21dae41fb9fd53a56666b6e
+
+yarn killtest:0g-storage-retrieve \
+  --root-hash 0x0c9ec63609f1594e2f7722ba0b71528c573d914868e5c59f401fd87f4beb9c82
+```
+
+## Required Environment
+
+`KEEPERHUB_WEBHOOK_URL` and `KEEPERHUB_WEBHOOK_API_KEY` are used by `/api/keeperhub/trigger`.
+
+`KEEPERHUB_API_KEY` and `KEEPERHUB_WORKFLOW_ID` are used by `/api/keeperhub/execution` to read execution status and logs.
+
+`BREW_0G_STORAGE_PRIVATE_KEY` uploads review receipt artifacts to 0G Storage. If omitted, the app falls back to `ZERO_G_PRIVATE_KEY`.
+
+`BREW_REVIEW_COORDINATOR_PRIVATE_KEY` should live in `packages/receipt-service` for the normal flow. The web env only needs it if you intentionally use the legacy Next API fallback. `BREW_REVIEW_COORDINATOR_ADDRESS` must be allowlisted in `AttestationVerifier`.
+
+`BREW_REVIEW_RECEIPT_URL` should point to the public receipt service endpoint, usually:
+
+```text
+https://<receipt-service-origin>/review-receipt
+```

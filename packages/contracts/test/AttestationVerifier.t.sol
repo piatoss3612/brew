@@ -26,11 +26,14 @@ contract AttestationVerifierTest is Test {
     MockEAS internal eas;
     VerifierMockToken internal token;
 
+    uint256 internal constant COORDINATOR_PRIVATE_KEY = 0xA11CE;
+
     address internal owner = makeAddr("owner");
     address internal sponsor = makeAddr("sponsor");
     address internal beneficiary = makeAddr("beneficiary");
     address internal issuer = makeAddr("issuer");
     address internal stranger = makeAddr("stranger");
+    address internal coordinator;
 
     uint256 internal constant AMOUNT = 1_000 ether;
     bytes32 internal constant TEMPLATE_ID = keccak256("degree_verified:0.1.0");
@@ -45,9 +48,11 @@ contract AttestationVerifierTest is Test {
         token = new VerifierMockToken();
         escrow = new BrewEscrow(owner);
         verifier = new AttestationVerifier(owner, IEAS(address(eas)), IBrewEscrow(address(escrow)));
+        coordinator = vm.addr(COORDINATOR_PRIVATE_KEY);
 
         vm.startPrank(owner);
         escrow.setVerifier(address(verifier));
+        verifier.setReviewCoordinatorAllowed(coordinator, true);
         verifier.registerTemplate(TEMPLATE_ID, SCHEMA_UID, EXPIRY_WINDOW, STALENESS_WINDOW);
         verifier.setIssuerAllowed(TEMPLATE_ID, issuer, true);
         vm.stopPrank();
@@ -88,20 +93,144 @@ contract AttestationVerifierTest is Test {
         assertFalse(verifier.isIssuerAllowed(TEMPLATE_ID, issuer));
     }
 
+    function testSetReviewCoordinatorAllowedStoresCoordinatorFlag() public {
+        assertTrue(verifier.isReviewCoordinatorAllowed(coordinator));
+
+        vm.prank(owner);
+        verifier.setReviewCoordinatorAllowed(coordinator, false);
+
+        assertFalse(verifier.isReviewCoordinatorAllowed(coordinator));
+    }
+
     function testVerifyAndReleaseHappyPath() public {
         uint256 trustId = _createTrust(TEMPLATE_ID);
         bytes32 uid = _seedAttestation(
             issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
         );
+        IAttestationVerifier.ReviewReceipt memory receipt = _recommendedReceipt(trustId, beneficiary, uid);
+        bytes memory signature = _signReceipt(receipt);
 
         vm.expectEmit(true, true, true, true, address(verifier));
         emit IAttestationVerifier.Verified(trustId, uid, beneficiary);
+        vm.expectEmit(true, true, true, false, address(verifier));
+        emit IAttestationVerifier.ReviewReceiptAccepted(
+            trustId, uid, coordinator, receipt.receiptRoot, receipt.receiptUri
+        );
 
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
 
         assertEq(token.balanceOf(beneficiary), AMOUNT);
         assertTrue(escrow.isReleased(trustId, beneficiary));
         assertTrue(verifier.consumed(uid));
+    }
+
+    function testVerifyAndReleaseRejectsRejectedReceipt() public {
+        uint256 trustId = _createTrust(TEMPLATE_ID);
+        bytes32 uid = _seedAttestation(
+            issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
+        );
+        IAttestationVerifier.ReviewReceipt memory receipt =
+            _reviewReceipt(trustId, beneficiary, uid, TEMPLATE_ID, IAttestationVerifier.ReviewVerdict.Rejected);
+        bytes32 digest = verifier.digestReviewReceipt(receipt);
+        bytes memory signature = _signReceipt(receipt);
+
+        vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.ReviewReceiptNotRecommended.selector, digest));
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
+    }
+
+    function testVerifyAndReleaseRejectsExpiredReceipt() public {
+        uint256 trustId = _createTrust(TEMPLATE_ID);
+        bytes32 uid = _seedAttestation(
+            issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
+        );
+        IAttestationVerifier.ReviewReceipt memory receipt = _recommendedReceipt(trustId, beneficiary, uid);
+        bytes32 digest = verifier.digestReviewReceipt(receipt);
+        uint64 expiresAt = receipt.expiresAt;
+        bytes memory signature = _signReceipt(receipt);
+
+        vm.warp(uint256(expiresAt));
+
+        vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.ReviewReceiptExpired.selector, digest, expiresAt));
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
+    }
+
+    function testVerifyAndReleaseRejectsWrongBeneficiaryReceipt() public {
+        uint256 trustId = _createTrust(TEMPLATE_ID);
+        bytes32 uid = _seedAttestation(
+            issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
+        );
+        IAttestationVerifier.ReviewReceipt memory receipt = _recommendedReceipt(trustId, stranger, uid);
+        bytes32 digest = verifier.digestReviewReceipt(receipt);
+        bytes memory signature = _signReceipt(receipt);
+
+        vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.ReviewReceiptMismatch.selector, digest));
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
+    }
+
+    function testVerifyAndReleaseRejectsWrongTemplateReceipt() public {
+        uint256 trustId = _createTrust(TEMPLATE_ID);
+        bytes32 uid = _seedAttestation(
+            issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
+        );
+        IAttestationVerifier.ReviewReceipt memory receipt = _reviewReceipt(
+            trustId,
+            beneficiary,
+            uid,
+            keccak256("wrong_template:0.1.0"),
+            IAttestationVerifier.ReviewVerdict.ReleaseRecommended
+        );
+        bytes32 digest = verifier.digestReviewReceipt(receipt);
+        bytes memory signature = _signReceipt(receipt);
+
+        vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.ReviewReceiptMismatch.selector, digest));
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
+    }
+
+    function testVerifyAndReleaseRejectsUnallowedCoordinator() public {
+        uint256 trustId = _createTrust(TEMPLATE_ID);
+        bytes32 uid = _seedAttestation(
+            issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
+        );
+        IAttestationVerifier.ReviewReceipt memory receipt = _recommendedReceipt(trustId, beneficiary, uid);
+
+        vm.prank(owner);
+        verifier.setReviewCoordinatorAllowed(coordinator, false);
+
+        bytes memory signature = _signReceipt(receipt);
+
+        vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.ReviewCoordinatorNotAllowed.selector, coordinator));
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
+    }
+
+    function testVerifyAndReleaseRejectsWrongSignature() public {
+        uint256 trustId = _createTrust(TEMPLATE_ID);
+        bytes32 uid = _seedAttestation(
+            issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
+        );
+        IAttestationVerifier.ReviewReceipt memory receipt = _recommendedReceipt(trustId, beneficiary, uid);
+        uint256 wrongPrivateKey = 0xB0B;
+        address wrongSigner = vm.addr(wrongPrivateKey);
+        bytes memory signature = _signReceiptWith(receipt, wrongPrivateKey);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAttestationVerifier.InvalidReviewReceiptSignature.selector, coordinator, wrongSigner
+            )
+        );
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
+    }
+
+    function testVerifyAndReleaseRejectsInvalidReceiptRoot() public {
+        uint256 trustId = _createTrust(TEMPLATE_ID);
+        bytes32 uid = _seedAttestation(
+            issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
+        );
+        IAttestationVerifier.ReviewReceipt memory receipt = _recommendedReceipt(trustId, beneficiary, uid);
+        receipt.receiptRoot = bytes32(0);
+        bytes memory signature = _signReceipt(receipt);
+
+        vm.expectRevert(IAttestationVerifier.InvalidReviewReceipt.selector);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsWrongSchema() public {
@@ -110,19 +239,23 @@ contract AttestationVerifierTest is Test {
         bytes32 uid = _seedAttestation(
             issuer, beneficiary, wrongSchema, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
         );
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, uid);
 
         vm.expectRevert(
             abi.encodeWithSelector(IAttestationVerifier.SchemaMismatch.selector, TEMPLATE_ID, SCHEMA_UID, wrongSchema)
         );
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsUnknownAttestation() public {
         uint256 trustId = _createTrust(TEMPLATE_ID);
         bytes32 unknownUid = keccak256("unknown attestation");
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, unknownUid);
 
         vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.AttestationNotFound.selector, unknownUid));
-        verifier.verifyAndRelease(trustId, beneficiary, unknownUid);
+        verifier.verifyAndRelease(trustId, beneficiary, unknownUid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsUnauthorizedIssuer() public {
@@ -130,9 +263,11 @@ contract AttestationVerifierTest is Test {
         bytes32 uid = _seedAttestation(
             stranger, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
         );
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, uid);
 
         vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.IssuerNotAllowed.selector, TEMPLATE_ID, stranger));
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsWrongRecipient() public {
@@ -140,11 +275,13 @@ contract AttestationVerifierTest is Test {
         bytes32 uid = _seedAttestation(
             issuer, stranger, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
         );
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, uid);
 
         vm.expectRevert(
             abi.encodeWithSelector(IAttestationVerifier.WrongSubject.selector, trustId, beneficiary, stranger)
         );
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsAssertedBeneficiaryMismatch() public {
@@ -152,11 +289,13 @@ contract AttestationVerifierTest is Test {
         bytes32 uid = _seedAttestation(
             issuer, stranger, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
         );
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, stranger, uid);
 
         vm.expectRevert(
             abi.encodeWithSelector(IAttestationVerifier.WrongSubject.selector, trustId, beneficiary, stranger)
         );
-        verifier.verifyAndRelease(trustId, stranger, uid);
+        verifier.verifyAndRelease(trustId, stranger, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsRevokedAttestation() public {
@@ -165,17 +304,21 @@ contract AttestationVerifierTest is Test {
         bytes32 uid = _seedAttestation(
             issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), revokedAt
         );
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, uid);
 
         vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.AttestationRevoked.selector, uid, revokedAt));
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsMissingExpiryWhenWindowIsRequired() public {
         uint256 trustId = _createTrust(TEMPLATE_ID);
         bytes32 uid = _seedAttestation(issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), 0, 0);
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, uid);
 
         vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.AttestationExpiryMissing.selector, uid));
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsExpiryPastTemplateWindow() public {
@@ -183,6 +326,8 @@ contract AttestationVerifierTest is Test {
         uint64 attestedAt = uint64(block.timestamp);
         uint64 expirationTime = uint64(block.timestamp + EXPIRY_WINDOW + 1);
         bytes32 uid = _seedAttestation(issuer, beneficiary, SCHEMA_UID, attestedAt, expirationTime, 0);
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, uid);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -192,16 +337,18 @@ contract AttestationVerifierTest is Test {
                 uint256(attestedAt) + EXPIRY_WINDOW
             )
         );
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsExpiredAttestation() public {
         uint256 trustId = _createTrust(TEMPLATE_ID);
         uint64 expiredAt = uint64(block.timestamp - 1);
         bytes32 uid = _seedAttestation(issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp - 1 days), expiredAt, 0);
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, uid);
 
         vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.AttestationExpired.selector, uid, expiredAt));
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsStaleAttestation() public {
@@ -209,11 +356,13 @@ contract AttestationVerifierTest is Test {
         uint64 attestedAt = uint64(block.timestamp - STALENESS_WINDOW - 1);
         bytes32 uid =
             _seedAttestation(issuer, beneficiary, SCHEMA_UID, attestedAt, uint64(block.timestamp + 30 days), 0);
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, uid);
 
         vm.expectRevert(
             abi.encodeWithSelector(IAttestationVerifier.AttestationStale.selector, uid, attestedAt, STALENESS_WINDOW)
         );
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseRejectsConsumedAttestation() public {
@@ -222,11 +371,13 @@ contract AttestationVerifierTest is Test {
             issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
         );
 
-        verifier.verifyAndRelease(firstTrustId, beneficiary, uid);
+        _verifyAndRelease(firstTrustId, beneficiary, uid);
 
         uint256 secondTrustId = _createTrust(TEMPLATE_ID);
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(secondTrustId, beneficiary, uid);
         vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.AlreadyConsumed.selector, uid));
-        verifier.verifyAndRelease(secondTrustId, beneficiary, uid);
+        verifier.verifyAndRelease(secondTrustId, beneficiary, uid, receipt, signature);
     }
 
     function testVerifyAndReleaseAllowsNoExpiryWhenTemplateWindowIsDisabled() public {
@@ -241,7 +392,7 @@ contract AttestationVerifierTest is Test {
         uint256 trustId = _createTrust(templateId);
         bytes32 uid = _seedAttestation(issuer, beneficiary, schemaUid, uint64(block.timestamp), 0, 0);
 
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        _verifyAndRelease(trustId, beneficiary, uid);
 
         assertTrue(escrow.isReleased(trustId, beneficiary));
     }
@@ -290,9 +441,11 @@ contract AttestationVerifierTest is Test {
         bytes32 uid = _seedAttestation(
             issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
         );
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, beneficiary, uid);
 
         vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.TemplateNotRegistered.selector, unknownTemplate));
-        verifier.verifyAndRelease(trustId, beneficiary, uid);
+        verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
     }
 
     function _createTrust(bytes32 templateId) internal returns (uint256 trustId) {
@@ -326,5 +479,70 @@ contract AttestationVerifierTest is Test {
                 data: abi.encode("degree_verified")
             })
         );
+    }
+
+    function _verifyAndRelease(uint256 trustId, address releaseBeneficiary, bytes32 attestationUid) internal {
+        (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature) =
+            _signedRecommendedReceipt(trustId, releaseBeneficiary, attestationUid);
+        verifier.verifyAndRelease(trustId, releaseBeneficiary, attestationUid, receipt, signature);
+    }
+
+    function _signedRecommendedReceipt(uint256 trustId, address receiptBeneficiary, bytes32 attestationUid)
+        internal
+        view
+        returns (IAttestationVerifier.ReviewReceipt memory receipt, bytes memory signature)
+    {
+        receipt = _recommendedReceipt(trustId, receiptBeneficiary, attestationUid);
+        signature = _signReceipt(receipt);
+    }
+
+    function _recommendedReceipt(uint256 trustId, address receiptBeneficiary, bytes32 attestationUid)
+        internal
+        view
+        returns (IAttestationVerifier.ReviewReceipt memory)
+    {
+        IBrewEscrow.Trust memory trust = escrow.trusts(trustId);
+        return _reviewReceipt(
+            trustId,
+            receiptBeneficiary,
+            attestationUid,
+            trust.templateId,
+            IAttestationVerifier.ReviewVerdict.ReleaseRecommended
+        );
+    }
+
+    function _reviewReceipt(
+        uint256 trustId,
+        address receiptBeneficiary,
+        bytes32 attestationUid,
+        bytes32 templateId,
+        IAttestationVerifier.ReviewVerdict verdict
+    ) internal view returns (IAttestationVerifier.ReviewReceipt memory) {
+        return IAttestationVerifier.ReviewReceipt({
+            trustId: trustId,
+            beneficiary: receiptBeneficiary,
+            attestationUid: attestationUid,
+            templateId: templateId,
+            receiptRoot: keccak256(abi.encode("review-root", trustId, attestationUid, templateId, verdict)),
+            receiptUri: "0g://review-receipts/example",
+            coordinator: coordinator,
+            verdict: verdict,
+            createdAt: uint64(block.timestamp),
+            expiresAt: uint64(block.timestamp + 7 days)
+        });
+    }
+
+    function _signReceipt(IAttestationVerifier.ReviewReceipt memory receipt) internal view returns (bytes memory) {
+        return _signReceiptWith(receipt, COORDINATOR_PRIVATE_KEY);
+    }
+
+    function _signReceiptWith(IAttestationVerifier.ReviewReceipt memory receipt, uint256 privateKey)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes32 digest = verifier.digestReviewReceipt(receipt);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        return abi.encodePacked(r, s, v);
     }
 }

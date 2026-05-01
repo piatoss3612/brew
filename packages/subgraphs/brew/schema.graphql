@@ -18,6 +18,11 @@ type Trust @entity(immutable: false) {
   refundedTx: Bytes
   verifiedAt: BigInt
   verifiedTx: Bytes
+  reviewReceiptRoot: Bytes
+  reviewReceiptUri: String
+  reviewCoordinator: Bytes
+  reviewedAt: BigInt
+  reviewedTx: Bytes
 }
 
 type Verification @entity(immutable: true) {
@@ -26,6 +31,19 @@ type Verification @entity(immutable: true) {
   trustId: BigInt!
   attestationUid: Bytes!
   beneficiary: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ReviewReceipt @entity(immutable: true) {
+  id: Bytes!
+  trust: Trust!
+  trustId: BigInt!
+  attestationUid: Bytes!
+  coordinator: Bytes!
+  receiptRoot: Bytes!
+  receiptUri: String!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!
@@ -45,6 +63,14 @@ type IssuerPermission @entity(immutable: false) {
   id: ID!
   templateId: Bytes!
   issuer: Bytes!
+  allowed: Boolean!
+  updatedAt: BigInt!
+  updatedTx: Bytes!
+}
+
+type ReviewCoordinatorPermission @entity(immutable: false) {
+  id: ID!
+  coordinator: Bytes!
   allowed: Boolean!
   updatedAt: BigInt!
   updatedTx: Bytes!

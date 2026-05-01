@@ -60,8 +60,8 @@ source .env
 result:
 
 ```
-BREW_ESCROW_ADDRESS=0xED5160554F93138c7f537bC1C99BFa475c97E622
-BREW_VERIFIER_ADDRESS=0xE8a519bB3B47864c6aB49e97D6338DAF5217aF6a
+BREW_ESCROW_ADDRESS=0xE284fB280bc5A6c786b3B59621A3088Dc31f8bAb
+BREW_VERIFIER_ADDRESS=0xe5b3217407cee7F5cDa16946A257bC362D785b56
 ```
 
 ### 2. EAS Schemas
@@ -95,7 +95,7 @@ demo issuer for all templates.
 
 ```sh
 forge script script/ConfigureBrewVerifier.s.sol:ConfigureBrewVerifier \
-  --rpc-url "$SEPOLIA_RPC_URL" \
+  --rpc-url sepolia \
   --account "$BREW_DEPLOYER_ACCOUNT" \
   --broadcast \
   --slow
@@ -124,7 +124,40 @@ BREW_CONFIG_SENDER=0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
 DEMO_ISSUER_ADDRESS=0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
 ```
 
-### 4. Demo Token (Optional)
+### 4. Review Coordinator
+
+Allowlist the agent/coordinator address that signs Brew review receipts.
+
+```sh
+forge script script/ConfigureReviewCoordinator.s.sol:ConfigureReviewCoordinator \
+  --rpc-url sepolia \
+  --account "$BREW_DEPLOYER_ACCOUNT" \
+  --broadcast \
+  --slow
+```
+
+By default, the script uses `BREW_REVIEW_COORDINATOR_ADDRESS`.
+If that env var is missing or empty, it falls back to the first loaded Foundry
+keystore signer: `vm.getWallets()[0]`.
+
+For the demo, this can be the deployer wallet. If the 0G agent or local agent
+producer signs receipts with a separate key, set:
+
+```sh
+BREW_REVIEW_COORDINATOR_ADDRESS=0x...
+```
+
+The configured coordinator must match the `coordinator` field and EIP-712
+signature used in `verifyAndRelease`.
+
+result:
+
+```
+BREW_VERIFIER_ADDRESS 0xe5b3217407cee7F5cDa16946A257bC362D785b56
+BREW_REVIEW_COORDINATOR_ADDRESS 0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
+```
+
+### 5. Demo Token (Optional)
 
 Use this only when you want a local demo ERC-20 instead of a known Sepolia token.
 Set `DEMO_TOKEN_RECIPIENT` before running it.
@@ -140,7 +173,7 @@ forge script script/DeployDemoUSDC.s.sol:DeployDemoUSDC \
 
 Copy the printed `DEMO_TOKEN_ADDRESS` into `.env`.
 
-### 5. Demo Token Happy Path Simulation
+### 6. Demo Token Happy Path Simulation
 
 Do not pass `--broadcast`; this simulates the full flow on a Sepolia fork.
 
@@ -150,13 +183,25 @@ logs for the full process:
 - approve escrow
 - create trust
 - issue EAS attestation
-- verify and release
+- sign a review receipt with the configured coordinator
+- verify the review receipt, verify the EAS attestation, and release
 
 ```sh
 forge script script/SimulateBrewHappyPath.s.sol:SimulateBrewHappyPath \
   --rpc-url sepolia \
   --account "$BREW_DEPLOYER_ACCOUNT"
 ```
+
+The simulation needs a coordinator private key only to produce the local
+EIP-712 signature:
+
+```sh
+BREW_REVIEW_COORDINATOR_PRIVATE_KEY=0x...
+```
+
+This private key must resolve to the allowlisted
+`BREW_REVIEW_COORDINATOR_ADDRESS`. For local fork simulation, using the same
+keystore/deployer key is acceptable.
 
 Expected final marker:
 

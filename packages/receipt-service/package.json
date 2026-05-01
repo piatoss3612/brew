@@ -1,0 +1,16 @@
+{
+  "name": "brew-receipt-service",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "killtest:review-receipt": "node scripts/killtest-review-receipt.mjs"
+  },
+  "dependencies": {
+    "@0gfoundation/0g-ts-sdk": "^1.2.1",
+    "ethers": "6.13.1"
+  }
+}

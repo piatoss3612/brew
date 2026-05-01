@@ -3,6 +3,8 @@ import { ethereum, Bytes, Address, BigInt } from "@graphprotocol/graph-ts"
 import {
   IssuerAllowlisted,
   OwnershipTransferred,
+  ReviewCoordinatorAllowlisted,
+  ReviewReceiptAccepted,
   TemplateRegistered,
   Verified
 } from "../generated/AttestationVerifier/AttestationVerifier"
@@ -30,6 +32,71 @@ export function createIssuerAllowlistedEvent(
   )
 
   return issuerAllowlistedEvent
+}
+
+export function createReviewCoordinatorAllowlistedEvent(
+  coordinator: Address,
+  allowed: boolean
+): ReviewCoordinatorAllowlisted {
+  let reviewCoordinatorAllowlistedEvent =
+    changetype<ReviewCoordinatorAllowlisted>(newMockEvent())
+
+  reviewCoordinatorAllowlistedEvent.parameters = new Array()
+
+  reviewCoordinatorAllowlistedEvent.parameters.push(
+    new ethereum.EventParam(
+      "coordinator",
+      ethereum.Value.fromAddress(coordinator)
+    )
+  )
+  reviewCoordinatorAllowlistedEvent.parameters.push(
+    new ethereum.EventParam("allowed", ethereum.Value.fromBoolean(allowed))
+  )
+
+  return reviewCoordinatorAllowlistedEvent
+}
+
+export function createReviewReceiptAcceptedEvent(
+  trustId: BigInt,
+  attestationUid: Bytes,
+  coordinator: Address,
+  receiptRoot: Bytes,
+  receiptUri: string
+): ReviewReceiptAccepted {
+  let reviewReceiptAcceptedEvent =
+    changetype<ReviewReceiptAccepted>(newMockEvent())
+
+  reviewReceiptAcceptedEvent.parameters = new Array()
+
+  reviewReceiptAcceptedEvent.parameters.push(
+    new ethereum.EventParam(
+      "trustId",
+      ethereum.Value.fromUnsignedBigInt(trustId)
+    )
+  )
+  reviewReceiptAcceptedEvent.parameters.push(
+    new ethereum.EventParam(
+      "attestationUid",
+      ethereum.Value.fromFixedBytes(attestationUid)
+    )
+  )
+  reviewReceiptAcceptedEvent.parameters.push(
+    new ethereum.EventParam(
+      "coordinator",
+      ethereum.Value.fromAddress(coordinator)
+    )
+  )
+  reviewReceiptAcceptedEvent.parameters.push(
+    new ethereum.EventParam(
+      "receiptRoot",
+      ethereum.Value.fromFixedBytes(receiptRoot)
+    )
+  )
+  reviewReceiptAcceptedEvent.parameters.push(
+    new ethereum.EventParam("receiptUri", ethereum.Value.fromString(receiptUri))
+  )
+
+  return reviewReceiptAcceptedEvent
 }
 
 export function createOwnershipTransferredEvent(
