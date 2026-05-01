@@ -335,19 +335,60 @@ BREW_REVIEW_RECEIPT_API_KEY=<same API key>
 
 Configure the KeeperHub workflow webhook for the primary demo path. The web trigger asks receipt-service to run the review, store the receipt, sign it, and hand the signed payload to KeeperHub. KeeperHub performs the `verifyAndReleaseWithReceiptFields` web3 action inside the workflow.
 
+KeeperHub should treat `ReadTrust` as the source of truth for every value that
+already exists in escrow state. The webhook trigger only carries the values that
+cannot be read from `BrewEscrow.trusts(trustId)`: the attestation UID, the signed
+receipt fields, and the coordinator signature.
+
+KeeperHub Trigger fields:
+
+```text
+trustId: {{Trigger.trustId}}
+attestationUid: {{Trigger.attestationUid}}
+receiptRoot: {{Trigger.receiptRoot}}
+receiptUri: {{Trigger.receiptUri}}
+coordinator: {{Trigger.coordinator}}
+createdAt: {{Trigger.createdAt}}
+expiresAt: {{Trigger.expiresAt}}
+coordinatorSignature: {{Trigger.coordinatorSignature}}
+```
+
+KeeperHub ReadTrust node:
+
+```text
+contract: <BREW_ESCROW_ADDRESS>
+function: trusts
+trustId: {{Trigger.trustId}}
+```
+
+KeeperHub CanRelease code node:
+
+```js
+const trust = {{ReadTrust.result}};
+
+return {
+  canRelease: trust.released === false && trust.refunded === false,
+  beneficiary: trust.beneficiary,
+  templateId: trust.templateId,
+  token: trust.token,
+  amount: trust.amount,
+  deadline: trust.deadline,
+};
+```
+
 KeeperHub Write Contract node:
 
 ```text
 contract: <BREW_VERIFIER_ADDRESS>
 function: verifyAndReleaseWithReceiptFields
 trustId: {{Trigger.trustId}}
-beneficiary: {{Trigger.beneficiary}}
+beneficiary: {{ReadTrust.result.beneficiary}}
 attestationUid: {{Trigger.attestationUid}}
-receiptRoot: {{Trigger.reviewReceipt.receiptRoot}}
-receiptUri: {{Trigger.reviewReceipt.receiptUri}}
-coordinator: {{Trigger.reviewReceipt.coordinator}}
-createdAt: {{Trigger.reviewReceipt.createdAt}}
-expiresAt: {{Trigger.reviewReceipt.expiresAt}}
+receiptRoot: {{Trigger.receiptRoot}}
+receiptUri: {{Trigger.receiptUri}}
+coordinator: {{Trigger.coordinator}}
+createdAt: {{Trigger.createdAt}}
+expiresAt: {{Trigger.expiresAt}}
 coordinatorSignature: {{Trigger.coordinatorSignature}}
 ```
 

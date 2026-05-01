@@ -6,42 +6,26 @@ export function validateKeeperHubWebhookConfig(config) {
   return missing;
 }
 
-export function buildVerifyAndReleaseArgs({ input, reviewReceipt, coordinatorSignature }) {
-  return [
-    input.trustId,
-    input.beneficiary,
-    input.attestationUid,
-    reviewReceipt.receiptRoot,
-    reviewReceipt.receiptUri,
-    reviewReceipt.coordinator,
-    reviewReceipt.createdAt,
-    reviewReceipt.expiresAt,
-    coordinatorSignature,
-  ];
-}
-
 export function buildKeeperHubWebhookPayload({
   input,
   reviewReceipt,
   coordinatorSignature,
   receiptStorage,
-  receiptDigestInput,
 }) {
   return withoutUndefined({
     source: 'brew-receipt-service',
     action: 'verifyAndReleaseWithReceiptFields',
     trustId: input.trustId,
-    beneficiary: input.beneficiary,
     attestationUid: input.attestationUid,
-    templateId: reviewReceipt.templateId,
-    reviewReceipt,
+    receiptRoot: reviewReceipt.receiptRoot,
+    receiptUri: reviewReceipt.receiptUri,
+    coordinator: reviewReceipt.coordinator,
+    verdict: reviewReceipt.verdict,
+    createdAt: reviewReceipt.createdAt,
+    expiresAt: reviewReceipt.expiresAt,
     coordinatorSignature,
-    receiptStorage,
-    receiptDigestInput,
-    contractCall: {
-      functionName: 'verifyAndReleaseWithReceiptFields',
-      args: buildVerifyAndReleaseArgs({ input, reviewReceipt, coordinatorSignature }),
-    },
+    receiptStorageRootHash: receiptStorage?.rootHash,
+    receiptStorageUri: receiptStorage?.uri,
   });
 }
 
@@ -50,7 +34,6 @@ export async function triggerKeeperHubWebhook({
   reviewReceipt,
   coordinatorSignature,
   receiptStorage,
-  receiptDigestInput,
   config,
   fetchImpl = fetch,
 }) {
@@ -80,7 +63,6 @@ export async function triggerKeeperHubWebhook({
           reviewReceipt,
           coordinatorSignature,
           receiptStorage,
-          receiptDigestInput,
         }),
       ),
       signal: controller.signal,

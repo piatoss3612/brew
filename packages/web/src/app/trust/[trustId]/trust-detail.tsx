@@ -1279,7 +1279,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
 
             <div className="action-row">
               <button className="primary-action" disabled={!canRelease} onClick={verifyAndRelease}>
-                {needsNetworkSwitch ? 'Switch and release' : 'Verify receipt and release'}
+                {needsNetworkSwitch ? 'Switch and manual release' : 'Manual verifier release'}
               </button>
               <button
                 className="secondary-action"
@@ -1287,8 +1287,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                 onClick={triggerKeeperHubWorkflow}
               >
                 {keeperHubTriggerState === 'triggering'
-                  ? 'Triggering KeeperHub'
-                  : 'Run KeeperHub release'}
+                  ? 'Running agent release'
+                  : 'Run agent release'}
               </button>
             </div>
           </>
@@ -1312,8 +1312,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
               onClick={triggerKeeperHubWorkflow}
             >
               {keeperHubTriggerState === 'triggering'
-                ? 'Triggering KeeperHub'
-                : 'Run KeeperHub release'}
+                ? 'Running agent release'
+                : 'Run agent release'}
             </button>
           </>
         ) : (

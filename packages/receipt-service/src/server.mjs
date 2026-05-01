@@ -236,7 +236,6 @@ export async function buildReviewReceiptResponse({
       reviewReceipt: generated.reviewReceipt,
       coordinatorSignature: generated.coordinatorSignature,
       receiptStorage: generated.receiptStorage,
-      receiptDigestInput: generated.receiptDigestInput,
       config: config.keeperHubWebhook,
     });
     return {

@@ -65,6 +65,34 @@ test('runReviewSwarm reaches release quorum with mocked 0G responses', async () 
   assert.deepEqual(result.votes.map((vote) => vote.role), ['evidence', 'policy', 'risk']);
 });
 
+test('evidence agent prompt treats verifier-owned template checks as sufficient for advisory review', async () => {
+  let firstPrompt = '';
+  const responses = [
+    { decision: 'approve', rationale: ['Verifier-owned template checks are sufficient.'], riskFlags: ['none'] },
+    { decision: 'approve', rationale: ['Policy is consistent.'], riskFlags: ['none'] },
+    { decision: 'pass', rationale: ['No risk veto.'], riskFlags: ['none'] },
+  ];
+  let calls = 0;
+
+  const result = await runReviewSwarm(VALID_INPUT, VALID_CONFIG, {
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      if (calls === 0) firstPrompt = body.messages[1].content;
+
+      const review = responses[calls++];
+      return jsonResponse({
+        id: `chatcmpl-${calls}`,
+        choices: [{ message: { content: JSON.stringify(review) } }],
+      });
+    },
+  });
+
+  assert.equal(result.releaseReady, true);
+  assert.match(firstPrompt, /templateReference and templateRegistrationEvidence fields are sufficient/);
+  assert.match(firstPrompt, /do not ask for a separate template document/);
+  assert.match(firstPrompt, /advisoryReviewRule/);
+});
+
 test('runReviewSwarm blocks when any agent fails', async () => {
   const result = await runReviewSwarm(VALID_INPUT, VALID_CONFIG, {
     fetchImpl: async () => jsonResponse({ error: 'blocked' }, { ok: false, status: 502 }),

@@ -40,7 +40,7 @@ test('validateKeeperHubWebhookConfig requires a webhook URL when release executi
   ]);
 });
 
-test('buildKeeperHubWebhookPayload preserves the full signed release payload for the workflow', () => {
+test('buildKeeperHubWebhookPayload sends only trigger-only release fields to KeeperHub', () => {
   const payload = buildKeeperHubWebhookPayload({
     input: INPUT,
     reviewReceipt: REVIEW_RECEIPT,
@@ -55,25 +55,20 @@ test('buildKeeperHubWebhookPayload preserves the full signed release payload for
 
   assert.equal(payload.action, 'verifyAndReleaseWithReceiptFields');
   assert.equal(payload.trustId, INPUT.trustId);
-  assert.equal(payload.beneficiary, INPUT.beneficiary);
   assert.equal(payload.attestationUid, INPUT.attestationUid);
-  assert.equal(payload.templateId, INPUT.templateId);
-  assert.deepEqual(payload.reviewReceipt, REVIEW_RECEIPT);
+  assert.equal(payload.receiptRoot, REVIEW_RECEIPT.receiptRoot);
+  assert.equal(payload.receiptUri, REVIEW_RECEIPT.receiptUri);
+  assert.equal(payload.coordinator, REVIEW_RECEIPT.coordinator);
+  assert.equal(payload.verdict, REVIEW_RECEIPT.verdict);
+  assert.equal(payload.createdAt, REVIEW_RECEIPT.createdAt);
+  assert.equal(payload.expiresAt, REVIEW_RECEIPT.expiresAt);
   assert.equal(payload.coordinatorSignature, '0xsignature');
-  assert.deepEqual(payload.contractCall, {
-    functionName: 'verifyAndReleaseWithReceiptFields',
-    args: [
-      INPUT.trustId,
-      INPUT.beneficiary,
-      INPUT.attestationUid,
-      REVIEW_RECEIPT.receiptRoot,
-      REVIEW_RECEIPT.receiptUri,
-      REVIEW_RECEIPT.coordinator,
-      REVIEW_RECEIPT.createdAt,
-      REVIEW_RECEIPT.expiresAt,
-      '0xsignature',
-    ],
-  });
+  assert.equal(payload.receiptStorageRootHash, REVIEW_RECEIPT.receiptRoot);
+  assert.equal(payload.receiptStorageUri, REVIEW_RECEIPT.receiptUri);
+  assert.equal('beneficiary' in payload, false);
+  assert.equal('templateId' in payload, false);
+  assert.equal('reviewReceipt' in payload, false);
+  assert.equal('contractCall' in payload, false);
 });
 
 test('triggerKeeperHubWebhook posts the receipt payload to the configured KeeperHub webhook', async () => {
@@ -110,6 +105,8 @@ test('triggerKeeperHubWebhook posts the receipt payload to the configured Keeper
 
   const body = JSON.parse(calls[0].init.body);
   assert.equal(body.action, 'verifyAndReleaseWithReceiptFields');
-  assert.equal(body.reviewReceipt.receiptRoot, REVIEW_RECEIPT.receiptRoot);
-  assert.equal(body.contractCall.functionName, 'verifyAndReleaseWithReceiptFields');
+  assert.equal(body.receiptRoot, REVIEW_RECEIPT.receiptRoot);
+  assert.equal(body.receiptUri, REVIEW_RECEIPT.receiptUri);
+  assert.equal('beneficiary' in body, false);
+  assert.equal('templateId' in body, false);
 });

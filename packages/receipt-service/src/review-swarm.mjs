@@ -7,7 +7,7 @@ const REVIEW_AGENTS = [
     label: 'Evidence Agent',
     expectedDecision: 'approve',
     instruction:
-      'Check whether the attestation UID, beneficiary, template ID, and trust fields are complete enough to hand off to the onchain verifier. The onchain verifier will validate EAS details; do not require offchain attestation body content in this advisory review. Return approve, missing_evidence, or reject.',
+      'Check whether the attestation UID, beneficiary, template ID, and trust fields are complete enough to hand off to the onchain verifier. The provided templateReference and templateRegistrationEvidence fields are sufficient for this advisory review; do not ask for a separate template document, template registration transaction, or offchain attestation body. The onchain verifier will validate EAS schema, issuer allowlist, freshness, and receipt signature. Return approve when trustId, beneficiary, templateId, and attestationUid are present and the trust is not already released or refunded. Return approve, missing_evidence, or reject.',
   },
   {
     role: 'policy',
@@ -102,7 +102,9 @@ function buildReviewContext(input) {
     attestationUid: input.attestationUid,
     templateReference: 'templateId read from onchain BrewEscrow trust state',
     templateRegistrationEvidence:
-      'The verifier contract performs authoritative template and EAS checks during verifyAndReleaseWithReceiptFields.',
+      'Sufficient for advisory review: AttestationVerifier owns the template registry and performs authoritative template, EAS schema, issuer allowlist, freshness, and receipt-signature checks during verifyAndReleaseWithReceiptFields.',
+    advisoryReviewRule:
+      'If trustId, beneficiary, templateId, and attestationUid are present and released/refunded are false, the evidence agent should approve handoff to the verifier.',
     escrowAddress: optionalAddress(input.escrowAddress),
     verifierAddress: optionalAddress(input.verifierAddress),
     schemaUid: optionalBytes32(input.schemaUid),
