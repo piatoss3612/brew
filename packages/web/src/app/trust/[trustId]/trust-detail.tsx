@@ -45,6 +45,7 @@ import {
   txLink,
 } from '../../../format';
 import { fetchKeeperHubEvidence, triggerKeeperHubRelease } from '../../../keeperhub';
+import { fetchReviewReceiptArtifact } from '../../../review-receipt-artifact';
 import { buildSponsorEvidence, type ReviewReceiptPayload } from '../../../sponsor-evidence';
 import { fetchBrewStatus } from '../../../subgraph';
 import { SponsorEvidencePanel } from './sponsor-evidence-panel';
@@ -526,6 +527,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const [keeperHubTriggerState, setKeeperHubTriggerState] =
     useState<KeeperHubTriggerState>('idle');
   const [keeperHubTriggerError, setKeeperHubTriggerError] = useState<string | null>(null);
+  const [receiptArtifactOpen, setReceiptArtifactOpen] = useState(false);
   const [step, setStep] = useState<ActionStep>('idle');
   const [activeAction, setActiveAction] = useState<ActiveAction | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -604,6 +606,17 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     queryFn: () => fetchKeeperHubEvidence(trust?.trustId ?? trustId),
     enabled: Boolean(trust),
     refetchOnWindowFocus: false,
+  });
+  const receiptArtifactQuery = useQuery({
+    queryKey: ['review-receipt-artifact', trust?.reviewReceiptRoot, trust?.reviewReceiptUri],
+    queryFn: () =>
+      fetchReviewReceiptArtifact({
+        rootHash: trust?.reviewReceiptRoot,
+        uri: trust?.reviewReceiptUri,
+      }),
+    enabled: receiptArtifactOpen && Boolean(trust?.reviewReceiptRoot || trust?.reviewReceiptUri),
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
   });
 
   const tokenAddress = trust && isAddress(trust.token) ? (trust.token as Address) : undefined;
@@ -748,6 +761,15 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     keeperHubRunId ?? (storedKeeperHubExecution ? keeperHubRunLabel(storedKeeperHubExecution) : null);
   const hasKeeperHubTrigger =
     keeperHubTriggerState === 'submitted' || Boolean(storedKeeperHubExecution);
+  const hasReviewReceipt =
+    Boolean(trust?.reviewReceiptRoot) ||
+    Boolean(trust?.reviewReceiptUri) ||
+    Boolean(trust?.reviewCoordinator) ||
+    Boolean(trust?.reviewedTx);
+  const receiptArtifactJson =
+    receiptArtifactQuery.data === undefined
+      ? ''
+      : JSON.stringify(receiptArtifactQuery.data, null, 2);
 
   function updateAttestationUid(value: string) {
     setAttestationUid(value);
@@ -1118,6 +1140,67 @@ export function TrustDetail({ trustId }: { trustId: string }) {
       </section>
 
       <SponsorEvidencePanel evidence={sponsorEvidence} />
+
+      {hasReviewReceipt ? (
+        <section className="sponsor-panel" aria-label="Review receipt">
+          <div className="section-heading">
+            <div>
+              <span className="data-label">Review receipt</span>
+              <h2>0G receipt artifact</h2>
+            </div>
+            <strong>{trust.reviewReceiptRoot ? shortHash(trust.reviewReceiptRoot) : '-'}</strong>
+          </div>
+
+          <div className="trust-summary">
+            <div>
+              <span className="data-label">Root</span>
+              <strong title={trust.reviewReceiptRoot ?? undefined}>
+                {trust.reviewReceiptRoot ? shortHash(trust.reviewReceiptRoot) : '-'}
+              </strong>
+            </div>
+            <div>
+              <span className="data-label">URI</span>
+              <strong title={trust.reviewReceiptUri ?? undefined}>
+                {trust.reviewReceiptUri ?? '-'}
+              </strong>
+            </div>
+            <div>
+              <span className="data-label">Coordinator</span>
+              <strong title={trust.reviewCoordinator ?? undefined}>
+                {trust.reviewCoordinator ? shortenAddress(trust.reviewCoordinator) : '-'}
+              </strong>
+            </div>
+            <div>
+              <span className="data-label">Review tx</span>
+              {trust.reviewedTx ? (
+                <a className="tx-link" href={txLink(trust.reviewedTx)} target="_blank" rel="noreferrer">
+                  {shortHash(trust.reviewedTx)}
+                </a>
+              ) : (
+                <strong>-</strong>
+              )}
+            </div>
+          </div>
+
+          <button
+            className="secondary-action"
+            disabled={!trust.reviewReceiptRoot && !trust.reviewReceiptUri}
+            onClick={() => setReceiptArtifactOpen((current) => !current)}
+          >
+            {receiptArtifactOpen ? 'Hide receipt JSON' : 'View receipt JSON'}
+          </button>
+
+          {receiptArtifactOpen && receiptArtifactQuery.isFetching ? (
+            <p className="form-note">Loading receipt JSON.</p>
+          ) : null}
+          {receiptArtifactOpen && receiptArtifactQuery.error instanceof Error ? (
+            <p className="data-error">{receiptArtifactQuery.error.message}</p>
+          ) : null}
+          {receiptArtifactOpen && receiptArtifactJson ? (
+            <pre className="receipt-json">{receiptArtifactJson}</pre>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="sponsor-panel" aria-label="Issue attestation">
         <div className="section-heading">
