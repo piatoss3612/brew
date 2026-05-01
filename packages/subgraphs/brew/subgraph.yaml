@@ -6,11 +6,11 @@ schema:
 dataSources:
   - kind: ethereum
     name: BrewEscrow
-    network: sepolia
+    network: base-sepolia
     source:
-      address: "0xE284fB280bc5A6c786b3B59621A3088Dc31f8bAb"
+      address: "0xBB3e0B8f1F31e1dDac553A43F1fcEe305Cff38f2"
       abi: BrewEscrow
-      startBlock: 10746455
+      startBlock: 40929777
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -33,11 +33,11 @@ dataSources:
       file: ./src/brew-escrow.ts
   - kind: ethereum
     name: AttestationVerifier
-    network: sepolia
+    network: base-sepolia
     source:
-      address: "0xe5b3217407cee7F5cDa16946A257bC362D785b56"
+      address: "0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062"
       abi: AttestationVerifier
-      startBlock: 10746456
+      startBlock: 40929778
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9

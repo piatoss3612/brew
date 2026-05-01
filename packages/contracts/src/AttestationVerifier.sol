@@ -83,14 +83,35 @@ contract AttestationVerifier is IAttestationVerifier, Ownable, EIP712 {
         bytes calldata coordinatorSignature
     ) external {
         IBrewEscrow.Trust memory trust = _validateTrust(trustId, beneficiary);
-        _verifyReviewReceipt(trustId, beneficiary, attestationUid, trust.templateId, receipt, coordinatorSignature);
+        _verifyAndRelease(trustId, beneficiary, attestationUid, trust.templateId, receipt, coordinatorSignature);
+    }
 
-        _verifyAttestation(trustId, beneficiary, trust.templateId, attestationUid);
-        _consumeAndRelease(trustId, beneficiary, attestationUid);
+    function verifyAndReleaseWithReceiptFields(
+        uint256 trustId,
+        address beneficiary,
+        bytes32 attestationUid,
+        bytes32 receiptRoot,
+        string calldata receiptUri,
+        address coordinator,
+        uint64 createdAt,
+        uint64 expiresAt,
+        bytes calldata coordinatorSignature
+    ) external {
+        IBrewEscrow.Trust memory trust = _validateTrust(trustId, beneficiary);
+        ReviewReceipt memory receipt = ReviewReceipt({
+            trustId: trustId,
+            beneficiary: beneficiary,
+            attestationUid: attestationUid,
+            templateId: trust.templateId,
+            receiptRoot: receiptRoot,
+            receiptUri: receiptUri,
+            coordinator: coordinator,
+            verdict: ReviewVerdict.ReleaseRecommended,
+            createdAt: createdAt,
+            expiresAt: expiresAt
+        });
 
-        emit ReviewReceiptAccepted(
-            trustId, attestationUid, receipt.coordinator, receipt.receiptRoot, receipt.receiptUri
-        );
+        _verifyAndRelease(trustId, beneficiary, attestationUid, trust.templateId, receipt, coordinatorSignature);
     }
 
     function digestReviewReceipt(ReviewReceipt calldata receipt) external view returns (bytes32) {
@@ -109,12 +130,30 @@ contract AttestationVerifier is IAttestationVerifier, Ownable, EIP712 {
         return _issuerAllowed[templateId][issuer];
     }
 
+    function _verifyAndRelease(
+        uint256 trustId,
+        address beneficiary,
+        bytes32 attestationUid,
+        bytes32 templateId,
+        ReviewReceipt memory receipt,
+        bytes calldata coordinatorSignature
+    ) private {
+        _verifyReviewReceipt(trustId, beneficiary, attestationUid, templateId, receipt, coordinatorSignature);
+
+        _verifyAttestation(trustId, beneficiary, templateId, attestationUid);
+        _consumeAndRelease(trustId, beneficiary, attestationUid);
+
+        emit ReviewReceiptAccepted(
+            trustId, attestationUid, receipt.coordinator, receipt.receiptRoot, receipt.receiptUri
+        );
+    }
+
     function _verifyReviewReceipt(
         uint256 trustId,
         address beneficiary,
         bytes32 attestationUid,
         bytes32 templateId,
-        ReviewReceipt calldata receipt,
+        ReviewReceipt memory receipt,
         bytes calldata coordinatorSignature
     ) private view returns (bytes32 receiptDigest) {
         receiptDigest = _digestReviewReceipt(receipt);
@@ -147,7 +186,7 @@ contract AttestationVerifier is IAttestationVerifier, Ownable, EIP712 {
         }
     }
 
-    function _digestReviewReceipt(ReviewReceipt calldata receipt) private view returns (bytes32) {
+    function _digestReviewReceipt(ReviewReceipt memory receipt) private view returns (bytes32) {
         return _hashTypedDataV4(
             keccak256(
                 abi.encode(

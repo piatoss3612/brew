@@ -2,8 +2,9 @@
 pragma solidity ^0.8.28;
 
 library BrewConfig {
-    address internal constant SEPOLIA_EAS = 0xC2679fBD37d54388Ce493F1DB75320D236e1815e;
-    address internal constant SEPOLIA_SCHEMA_REGISTRY = 0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0;
+    uint256 internal constant BASE_SEPOLIA_CHAIN_ID = 84_532;
+    address internal constant BASE_SEPOLIA_EAS = 0x4200000000000000000000000000000000000021;
+    address internal constant BASE_SEPOLIA_SCHEMA_REGISTRY = 0x4200000000000000000000000000000000000020;
 
     bytes32 internal constant WORKPLACE_TEMPLATE_ID = keccak256("workplace_verified:0.1.0");
     bytes32 internal constant DEGREE_TEMPLATE_ID = keccak256("degree_verified:0.1.0");

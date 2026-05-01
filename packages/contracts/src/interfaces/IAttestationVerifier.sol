@@ -88,6 +88,19 @@ interface IAttestationVerifier {
         bytes calldata coordinatorSignature
     ) external;
 
+    /// @notice Verifies and releases with flat receipt fields for workflow tools that cannot encode tuples.
+    function verifyAndReleaseWithReceiptFields(
+        uint256 trustId,
+        address beneficiary,
+        bytes32 attestationUid,
+        bytes32 receiptRoot,
+        string calldata receiptUri,
+        address coordinator,
+        uint64 createdAt,
+        uint64 expiresAt,
+        bytes calldata coordinatorSignature
+    ) external;
+
     /// @notice Returns the EIP-712 digest a coordinator must sign for a review receipt.
     function digestReviewReceipt(ReviewReceipt calldata receipt) external view returns (bytes32);
 

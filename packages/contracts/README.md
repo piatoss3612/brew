@@ -39,7 +39,7 @@ Deploy `BrewEscrow`, deploy `AttestationVerifier`, and wire
 
 ```sh
 forge script script/DeployBrewCore.s.sol:DeployBrewCore \
-  --rpc-url sepolia \
+  --rpc-url base_sepolia \
   --account "$BREW_DEPLOYER_ACCOUNT" \
   --broadcast \
   --slow \
@@ -57,11 +57,11 @@ Reload `.env` after filling those addresses:
 source .env
 ```
 
-result:
+Base Sepolia deployment output:
 
 ```
-BREW_ESCROW_ADDRESS=0xE284fB280bc5A6c786b3B59621A3088Dc31f8bAb
-BREW_VERIFIER_ADDRESS=0xe5b3217407cee7F5cDa16946A257bC362D785b56
+BREW_ESCROW_ADDRESS=0xBB3e0B8f1F31e1dDac553A43F1fcEe305Cff38f2
+BREW_VERIFIER_ADDRESS=0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062
 ```
 
 ### 2. EAS Schemas
@@ -70,14 +70,14 @@ Register or reuse Brew's four public-audit schemas on EAS.
 
 ```sh
 forge script script/RegisterBrewSchemas.s.sol:RegisterBrewSchemas \
-  --rpc-url "$SEPOLIA_RPC_URL" \
+  --rpc-url base_sepolia \
   --account "$BREW_DEPLOYER_ACCOUNT" \
   --broadcast \
   --slow
 ```
 
 The schema UIDs are deterministic, so the configure script derives them from
-the registered Sepolia UIDs stored in `BrewConfig`.
+the registered Base Sepolia UIDs stored in `BrewConfig`.
 
 result:
 
@@ -95,7 +95,7 @@ demo issuer for all templates.
 
 ```sh
 forge script script/ConfigureBrewVerifier.s.sol:ConfigureBrewVerifier \
-  --rpc-url sepolia \
+  --rpc-url base_sepolia \
   --account "$BREW_DEPLOYER_ACCOUNT" \
   --broadcast \
   --slow
@@ -130,7 +130,7 @@ Allowlist the agent/coordinator address that signs Brew review receipts.
 
 ```sh
 forge script script/ConfigureReviewCoordinator.s.sol:ConfigureReviewCoordinator \
-  --rpc-url sepolia \
+  --rpc-url base_sepolia \
   --account "$BREW_DEPLOYER_ACCOUNT" \
   --broadcast \
   --slow
@@ -148,23 +148,23 @@ BREW_REVIEW_COORDINATOR_ADDRESS=0x...
 ```
 
 The configured coordinator must match the `coordinator` field and EIP-712
-signature used in `verifyAndRelease`.
+signature used in `verifyAndReleaseWithReceiptFields`.
 
 result:
 
 ```
-BREW_VERIFIER_ADDRESS 0xe5b3217407cee7F5cDa16946A257bC362D785b56
+BREW_VERIFIER_ADDRESS 0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062
 BREW_REVIEW_COORDINATOR_ADDRESS 0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
 ```
 
 ### 5. Demo Token (Optional)
 
-Use this only when you want a local demo ERC-20 instead of a known Sepolia token.
+Use this only when you want a local demo ERC-20 instead of a known Base Sepolia token.
 Set `DEMO_TOKEN_RECIPIENT` before running it.
 
 ```sh
 forge script script/DeployDemoUSDC.s.sol:DeployDemoUSDC \
-  --rpc-url sepolia \
+  --rpc-url base_sepolia \
   --account "$BREW_DEPLOYER_ACCOUNT" \
   --broadcast \
   --slow \
@@ -173,9 +173,15 @@ forge script script/DeployDemoUSDC.s.sol:DeployDemoUSDC \
 
 Copy the printed `DEMO_TOKEN_ADDRESS` into `.env`.
 
+result:
+
+```
+DEMO_TOKEN_ADDRESS=0x63C972A697dfC788EadC61D9BDd4bcFeb2aBdF7C
+```
+
 ### 6. Demo Token Happy Path Simulation
 
-Do not pass `--broadcast`; this simulates the full flow on a Sepolia fork.
+Do not pass `--broadcast`; this simulates the full flow on a Base Sepolia fork.
 
 logs for the full process:
 
@@ -184,11 +190,11 @@ logs for the full process:
 - create trust
 - issue EAS attestation
 - sign a review receipt with the configured coordinator
-- verify the review receipt, verify the EAS attestation, and release
+- verify the flat review receipt fields, verify the EAS attestation, and release
 
 ```sh
 forge script script/SimulateBrewHappyPath.s.sol:SimulateBrewHappyPath \
-  --rpc-url sepolia \
+  --rpc-url base_sepolia \
   --account "$BREW_DEPLOYER_ACCOUNT"
 ```
 

@@ -13,7 +13,7 @@ import {BrewConfig} from "./BrewConfig.sol";
 contract DeployBrewCore is Script {
     function run() external returns (BrewEscrow escrow, AttestationVerifier verifier) {
         address deployer = _keystoreSigner();
-        address eas = BrewConfig.SEPOLIA_EAS;
+        address eas = BrewConfig.BASE_SEPOLIA_EAS;
 
         vm.startBroadcast();
         escrow = new BrewEscrow(deployer);

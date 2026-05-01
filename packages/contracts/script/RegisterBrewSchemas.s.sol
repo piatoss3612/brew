@@ -14,7 +14,7 @@ contract RegisterBrewSchemas is Script {
 
     function run() external {
         address deployer = _keystoreSigner();
-        address registryAddress = BrewConfig.SEPOLIA_SCHEMA_REGISTRY;
+        address registryAddress = BrewConfig.BASE_SEPOLIA_SCHEMA_REGISTRY;
         ISchemaRegistry registry = ISchemaRegistry(registryAddress);
 
         vm.startBroadcast();
