@@ -588,11 +588,90 @@ h1 {
   color: #14110f;
   border: 1px solid rgba(20, 17, 15, 0.12);
   background: rgba(255, 255, 255, 0.64);
-  font-size: 0.82rem;
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  font-size: 0.8rem;
   line-height: 1.5;
   overflow: auto;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.json-node,
+.json-children {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.json-node summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #706a61;
+  cursor: pointer;
+}
+
+.json-children {
+  margin-left: 16px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(20, 17, 15, 0.1);
+}
+
+.json-leaf {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.json-key {
+  flex: 0 0 auto;
+  color: #5b5147;
+  font-weight: 700;
+}
+
+.json-key::after {
+  content: ":";
+}
+
+.json-structure {
+  color: rgba(112, 106, 97, 0.78);
+}
+
+.json-string {
+  color: #17603d;
+}
+
+.json-number,
+.json-boolean {
+  color: #804b12;
+}
+
+.json-null {
+  color: #8f2f18;
+}
+
+.receipt-uri-button {
+  max-width: 100%;
+  padding: 0;
+  color: #706a61;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 700;
+  overflow: hidden;
+  text-align: left;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  text-underline-offset: 4px;
+  white-space: nowrap;
+}
+
+.receipt-uri-button:hover {
+  color: #14110f;
 }
 
 .form-note,

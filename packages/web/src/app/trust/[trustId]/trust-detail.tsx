@@ -192,6 +192,69 @@ function reviewReceiptJson(receipt: ReviewReceiptPayload | undefined) {
   return receipt ? JSON.stringify(receipt, null, 2) : '';
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function JsonPrimitive({ value }: { value: unknown }) {
+  if (value === null) return <span className="json-null">null</span>;
+  if (typeof value === 'string') return <span className="json-string">&quot;{value}&quot;</span>;
+  if (typeof value === 'number') return <span className="json-number">{value}</span>;
+  if (typeof value === 'boolean') return <span className="json-boolean">{String(value)}</span>;
+  return <span className="json-null">{String(value)}</span>;
+}
+
+function JsonTree({
+  label,
+  value,
+  root = false,
+}: {
+  label?: string;
+  value: unknown;
+  root?: boolean;
+}) {
+  if (Array.isArray(value)) {
+    return (
+      <details className="json-node" open={root || value.length <= 4}>
+        <summary>
+          {label ? <span className="json-key">{label}</span> : null}
+          <span className="json-structure">Array({value.length})</span>
+        </summary>
+        <div className="json-children">
+          {value.map((entry, index) => (
+            <JsonTree key={index} label={String(index)} value={entry} />
+          ))}
+        </div>
+      </details>
+    );
+  }
+
+  if (isRecord(value)) {
+    const entries = Object.entries(value);
+
+    return (
+      <details className="json-node" open={root || entries.length <= 6}>
+        <summary>
+          {label ? <span className="json-key">{label}</span> : null}
+          <span className="json-structure">Object({entries.length})</span>
+        </summary>
+        <div className="json-children">
+          {entries.map(([key, entry]) => (
+            <JsonTree key={key} label={key} value={entry} />
+          ))}
+        </div>
+      </details>
+    );
+  }
+
+  return (
+    <div className="json-leaf">
+      {label ? <span className="json-key">{label}</span> : null}
+      <JsonPrimitive value={value} />
+    </div>
+  );
+}
+
 function readSchemaRecord(value: unknown): SchemaRecord | null {
   if (!value || typeof value !== 'object') return null;
 
@@ -766,10 +829,6 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     Boolean(trust?.reviewReceiptUri) ||
     Boolean(trust?.reviewCoordinator) ||
     Boolean(trust?.reviewedTx);
-  const receiptArtifactJson =
-    receiptArtifactQuery.data === undefined
-      ? ''
-      : JSON.stringify(receiptArtifactQuery.data, null, 2);
 
   function updateAttestationUid(value: string) {
     setAttestationUid(value);
@@ -1160,9 +1219,17 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             </div>
             <div>
               <span className="data-label">URI</span>
-              <strong title={trust.reviewReceiptUri ?? undefined}>
-                {trust.reviewReceiptUri ?? '-'}
-              </strong>
+              {trust.reviewReceiptUri ? (
+                <button
+                  className="receipt-uri-button"
+                  title={trust.reviewReceiptUri}
+                  onClick={() => setReceiptArtifactOpen(true)}
+                >
+                  {trust.reviewReceiptUri}
+                </button>
+              ) : (
+                <strong>-</strong>
+              )}
             </div>
             <div>
               <span className="data-label">Coordinator</span>
@@ -1196,8 +1263,10 @@ export function TrustDetail({ trustId }: { trustId: string }) {
           {receiptArtifactOpen && receiptArtifactQuery.error instanceof Error ? (
             <p className="data-error">{receiptArtifactQuery.error.message}</p>
           ) : null}
-          {receiptArtifactOpen && receiptArtifactJson ? (
-            <pre className="receipt-json">{receiptArtifactJson}</pre>
+          {receiptArtifactOpen && receiptArtifactQuery.data !== undefined ? (
+            <div className="receipt-json" aria-label="Receipt JSON">
+              <JsonTree value={receiptArtifactQuery.data} root />
+            </div>
           ) : null}
         </section>
       ) : null}
