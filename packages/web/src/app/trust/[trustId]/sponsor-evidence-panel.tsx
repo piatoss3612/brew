@@ -17,13 +17,16 @@ function EvidenceValue({
   value,
   title,
   link,
+  onOpenStorageUri,
 }: {
   label: string;
   value?: string;
   title?: string;
   link?: string;
+  onOpenStorageUri?: (uri: string) => void;
 }) {
   const displayValue = value ?? '-';
+  const isStorageUri = value?.startsWith('0g://storage/') === true;
 
   return (
     <div>
@@ -32,6 +35,15 @@ function EvidenceValue({
         <a className="tx-link" href={link} target="_blank" rel="noreferrer" title={title ?? value}>
           {displayValue}
         </a>
+      ) : value && isStorageUri && onOpenStorageUri ? (
+        <button
+          type="button"
+          className="receipt-uri-button"
+          title={title ?? value}
+          onClick={() => onOpenStorageUri(value)}
+        >
+          {displayValue}
+        </button>
       ) : (
         <strong title={title ?? value}>{displayValue}</strong>
       )}
@@ -47,7 +59,13 @@ function shortMaybeHash(value?: string) {
   return value && value.startsWith('0x') && value.length > 18 ? shortHash(value) : value;
 }
 
-export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }) {
+export function SponsorEvidencePanel({
+  evidence,
+  onOpenStorageUri,
+}: {
+  evidence: SponsorEvidence;
+  onOpenStorageUri?: (uri: string) => void;
+}) {
   return (
     <section className="sponsor-panel" aria-label="Sponsor evidence">
       <div className="section-heading">
@@ -122,7 +140,11 @@ export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }
           </div>
           <div className="evidence-values">
             <EvidenceValue label="Provider" value={evidence.storage.provider} />
-            <EvidenceValue label="Manifest" value={evidence.storage.manifestUri} />
+            <EvidenceValue
+              label="Manifest"
+              value={evidence.storage.manifestUri}
+              onOpenStorageUri={onOpenStorageUri}
+            />
             <EvidenceValue
               label="Root"
               value={shortMaybeHash(evidence.storage.metadataRoot)}

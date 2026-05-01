@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   decodeEventLog,
   encodeAbiParameters,
@@ -574,6 +574,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const queryClient = useQueryClient();
+  const receiptArtifactSectionRef = useRef<HTMLElement | null>(null);
 
   const [attestationUid, setAttestationUid] = useState('');
   const [attestationUidEdited, setAttestationUidEdited] = useState(false);
@@ -603,6 +604,16 @@ export function TrustDetail({ trustId }: { trustId: string }) {
 
     return () => window.clearInterval(interval);
   }, []);
+
+  function openReceiptArtifactViewer() {
+    setReceiptArtifactOpen(true);
+    window.requestAnimationFrame(() => {
+      receiptArtifactSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  }
 
   const getStoredKeeperHubExecutionSnapshot = useCallback(
     () => storedKeeperHubExecutionSnapshot(trustId),
@@ -1198,10 +1209,17 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         </div>
       </section>
 
-      <SponsorEvidencePanel evidence={sponsorEvidence} />
+      <SponsorEvidencePanel
+        evidence={sponsorEvidence}
+        onOpenStorageUri={openReceiptArtifactViewer}
+      />
 
       {hasReviewReceipt ? (
-        <section className="sponsor-panel" aria-label="Review receipt">
+        <section
+          ref={receiptArtifactSectionRef}
+          className="sponsor-panel"
+          aria-label="Review receipt"
+        >
           <div className="section-heading">
             <div>
               <span className="data-label">Review receipt</span>
@@ -1221,9 +1239,10 @@ export function TrustDetail({ trustId }: { trustId: string }) {
               <span className="data-label">URI</span>
               {trust.reviewReceiptUri ? (
                 <button
+                  type="button"
                   className="receipt-uri-button"
                   title={trust.reviewReceiptUri}
-                  onClick={() => setReceiptArtifactOpen(true)}
+                  onClick={openReceiptArtifactViewer}
                 >
                   {trust.reviewReceiptUri}
                 </button>
@@ -1250,9 +1269,16 @@ export function TrustDetail({ trustId }: { trustId: string }) {
           </div>
 
           <button
+            type="button"
             className="secondary-action"
             disabled={!trust.reviewReceiptRoot && !trust.reviewReceiptUri}
-            onClick={() => setReceiptArtifactOpen((current) => !current)}
+            onClick={() => {
+              if (receiptArtifactOpen) {
+                setReceiptArtifactOpen(false);
+              } else {
+                openReceiptArtifactViewer();
+              }
+            }}
           >
             {receiptArtifactOpen ? 'Hide receipt JSON' : 'View receipt JSON'}
           </button>
