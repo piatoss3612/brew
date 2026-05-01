@@ -176,7 +176,7 @@ Copy the printed `DEMO_TOKEN_ADDRESS` into `.env`.
 result:
 
 ```
-DEMO_TOKEN_ADDRESS=0x63C972A697dfC788EadC61D9BDd4bcFeb2aBdF7C
+DEMO_TOKEN_ADDRESS=0x63c972a697dFc788EadC61d9Bdd4BcfEb2abdf7C
 ```
 
 ### 6. Demo Token Happy Path Simulation

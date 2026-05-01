@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { isAddress, type Address, formatUnits, type Hex, parseUnits } from 'viem';
+import { getAddress, isAddress, type Address, formatUnits, type Hex, parseUnits } from 'viem';
 import {
   useAccount,
   useChainId,
@@ -214,6 +214,10 @@ function readDecimals(value: unknown) {
   return null;
 }
 
+function normalizeAddress(value: string): Address | null {
+  return isAddress(value, { strict: false }) ? getAddress(value) : null;
+}
+
 function formatTokenAmount(value: unknown, decimals: number | null, symbol: string) {
   if (typeof value !== 'bigint' || decimals === null) return '-';
   return `${formatUnits(value, decimals)} ${symbol}`;
@@ -254,11 +258,11 @@ export function SponsorNewForm() {
 
   const tokenAddress = useMemo(() => {
     const trimmed = tokenAddressInput.trim();
-    return isAddress(trimmed) ? (trimmed as Address) : null;
+    return normalizeAddress(trimmed);
   }, [tokenAddressInput]);
 
   const beneficiaryInput = beneficiary.trim();
-  const directBeneficiary = isAddress(beneficiaryInput) ? (beneficiaryInput as Address) : null;
+  const directBeneficiary = normalizeAddress(beneficiaryInput);
   const shouldResolveEns = Boolean(beneficiaryInput && !directBeneficiary && isEnsName(beneficiaryInput));
   const ensQuery = useQuery({
     queryKey: ['ens-address', beneficiaryInput],
