@@ -146,6 +146,7 @@ function readReceiptStorage(value: unknown): ReviewReceiptStoragePayload | undef
     byteSize: typeof record.byteSize === 'number' ? record.byteSize : undefined,
     attempts: typeof record.attempts === 'number' ? record.attempts : undefined,
     txHash: stringValue(record.txHash),
+    txSeq: typeof record.txSeq === 'number' ? record.txSeq : undefined,
   };
 
   if (

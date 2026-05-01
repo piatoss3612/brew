@@ -71,6 +71,7 @@ export async function uploadJsonArtifactToZeroGStorage(options) {
           byteSize: Buffer.byteLength(artifactJson, 'utf8'),
           attempts: attempt,
           txHash: readUploadTxHash(uploadResult),
+          txSeq: readUploadTxSeq(uploadResult),
         };
       } catch (error) {
         lastError = error;
@@ -146,7 +147,25 @@ function readUploadTxHash(uploadResult) {
   if (!uploadResult) return undefined;
   if (typeof uploadResult === 'string') return uploadResult;
   if (typeof uploadResult !== 'object') return undefined;
-  return uploadResult.txHash ?? uploadResult.hash ?? uploadResult.transactionHash;
+  return (
+    uploadResult.txHash ??
+    uploadResult.hash ??
+    uploadResult.transactionHash ??
+    uploadResult.txHashes?.[0]
+  );
+}
+
+export function readUploadTxSeq(uploadResult) {
+  if (!uploadResult || typeof uploadResult !== 'object') return undefined;
+  const raw =
+    uploadResult.txSeq ??
+    uploadResult.txSeqs?.[0] ??
+    uploadResult.sequence ??
+    uploadResult.submissionIndex;
+  if (raw === undefined || raw === null || raw === '') return undefined;
+
+  const sequence = Number(raw);
+  return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : undefined;
 }
 
 function delay(ms) {

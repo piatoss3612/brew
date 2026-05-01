@@ -143,6 +143,7 @@ export type ReviewReceiptStoragePayload = {
   byteSize: number;
   attempts: number;
   txHash?: string;
+  txSeq?: number;
 };
 
 export type KeeperHubTriggerApiResponse =
@@ -228,6 +229,7 @@ export type SponsorEvidence = {
     receiptKey?: string;
     coordinator?: string;
     reviewedTx?: string;
+    submissionSequence?: number;
   };
   receipt: BrewEvidenceReceipt;
   verifier: {
@@ -658,8 +660,10 @@ export function buildSponsorEvidence(input: {
   attestationUid?: string | null;
   connectedIssuer?: string;
   keeperExecution?: KeeperExecutionResult;
+  receiptStorage?: ReviewReceiptStoragePayload;
 }): SponsorEvidence {
-  const { trust, template, attestationUid, connectedIssuer, keeperExecution } = input;
+  const { trust, template, attestationUid, connectedIssuer, keeperExecution, receiptStorage } =
+    input;
   const effectiveAttestationUid = attestationUid ?? trust.attestationUid ?? undefined;
   const keeperInput = buildKeeperInput(trust, template, effectiveAttestationUid);
   const resolvedKeeperExecution =
@@ -670,10 +674,14 @@ export function buildSponsorEvidence(input: {
     attestationUid: effectiveAttestationUid,
   });
   const manifestUri =
-    trust.reviewReceiptUri ?? `0g://simulated/brew/trust/${trust.trustId}/manifest.json`;
-  const metadataRoot = trust.reviewReceiptRoot ?? receipt.receiptDigest;
+    trust.reviewReceiptUri ??
+    receiptStorage?.uri ??
+    `0g://simulated/brew/trust/${trust.trustId}/manifest.json`;
+  const metadataRoot = trust.reviewReceiptRoot ?? receiptStorage?.rootHash ?? receipt.receiptDigest;
   const storageStatus: EvidenceMode =
-    trust.reviewReceiptRoot && trust.reviewReceiptUri ? 'live' : 'simulated';
+    (trust.reviewReceiptRoot && trust.reviewReceiptUri) || receiptStorage?.rootHash
+      ? 'live'
+      : 'simulated';
 
   return {
     agent: {
@@ -706,6 +714,7 @@ export function buildSponsorEvidence(input: {
       receiptKey: receipt.key,
       coordinator: trust.reviewCoordinator ?? undefined,
       reviewedTx: trust.reviewedTx ?? undefined,
+      submissionSequence: receiptStorage?.txSeq,
     },
     receipt,
     verifier: {

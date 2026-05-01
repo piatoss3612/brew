@@ -46,7 +46,11 @@ import {
 } from '../../../format';
 import { fetchKeeperHubEvidence, triggerKeeperHubRelease } from '../../../keeperhub';
 import { fetchReviewReceiptArtifact } from '../../../review-receipt-artifact';
-import { buildSponsorEvidence, type ReviewReceiptPayload } from '../../../sponsor-evidence';
+import {
+  buildSponsorEvidence,
+  type ReviewReceiptPayload,
+  type ReviewReceiptStoragePayload,
+} from '../../../sponsor-evidence';
 import { fetchBrewStatus } from '../../../subgraph';
 import { SponsorEvidencePanel } from './sponsor-evidence-panel';
 
@@ -71,6 +75,7 @@ type StoredKeeperHubExecution = {
   reviewReceipt?: ReviewReceiptPayload;
   coordinatorSignature?: string;
   reviewReceiptSource?: ReviewReceiptSource;
+  receiptStorage?: ReviewReceiptStoragePayload;
   keeperHubExecutionError?: string;
   executionId?: string;
   runId?: string;
@@ -418,6 +423,34 @@ function readReviewReceiptSource(value: unknown) {
     : undefined;
 }
 
+function readReceiptStoragePayload(value: unknown) {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const rootHash = optionalString(record, 'rootHash');
+  const uri = optionalString(record, 'uri');
+  const byteSize = record.byteSize;
+  const attempts = record.attempts;
+
+  if (
+    !rootHash ||
+    !isBytes32(rootHash) ||
+    !uri ||
+    typeof byteSize !== 'number' ||
+    typeof attempts !== 'number'
+  ) {
+    return undefined;
+  }
+
+  return {
+    rootHash,
+    uri,
+    byteSize,
+    attempts,
+    txHash: optionalString(record, 'txHash'),
+    txSeq: typeof record.txSeq === 'number' ? record.txSeq : undefined,
+  } satisfies ReviewReceiptStoragePayload;
+}
+
 function readStoredKeeperHubExecution(value: unknown, trustId: string) {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
@@ -433,6 +466,7 @@ function readStoredKeeperHubExecution(value: unknown, trustId: string) {
     reviewReceipt: readReviewReceiptPayload(record.reviewReceipt),
     coordinatorSignature: optionalString(record, 'coordinatorSignature'),
     reviewReceiptSource: readReviewReceiptSource(record),
+    receiptStorage: readReceiptStoragePayload(record.receiptStorage),
     keeperHubExecutionError: optionalString(record, 'keeperHubExecutionError'),
     executionId: optionalString(record, 'executionId'),
     runId: optionalString(record, 'runId'),
@@ -681,14 +715,18 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     enabled: Boolean(trust),
     refetchOnWindowFocus: false,
   });
+  const receiptStorageRoot =
+    trust?.reviewReceiptRoot ?? storedKeeperHubExecution?.receiptStorage?.rootHash;
+  const receiptStorageUri =
+    trust?.reviewReceiptUri ?? storedKeeperHubExecution?.receiptStorage?.uri;
   const receiptArtifactQuery = useQuery({
-    queryKey: ['review-receipt-artifact', trust?.reviewReceiptRoot, trust?.reviewReceiptUri],
+    queryKey: ['review-receipt-artifact', receiptStorageRoot, receiptStorageUri],
     queryFn: () =>
       fetchReviewReceiptArtifact({
-        rootHash: trust?.reviewReceiptRoot,
-        uri: trust?.reviewReceiptUri,
+        rootHash: receiptStorageRoot,
+        uri: receiptStorageUri,
       }),
-    enabled: receiptArtifactOpen && Boolean(trust?.reviewReceiptRoot || trust?.reviewReceiptUri),
+    enabled: receiptArtifactOpen && Boolean(receiptStorageRoot || receiptStorageUri),
     refetchOnWindowFocus: false,
     staleTime: Infinity,
   });
@@ -836,8 +874,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const hasKeeperHubTrigger =
     keeperHubTriggerState === 'submitted' || Boolean(storedKeeperHubExecution);
   const hasReviewReceipt =
-    Boolean(trust?.reviewReceiptRoot) ||
-    Boolean(trust?.reviewReceiptUri) ||
+    Boolean(receiptStorageRoot) ||
+    Boolean(receiptStorageUri) ||
     Boolean(trust?.reviewCoordinator) ||
     Boolean(trust?.reviewedTx);
 
@@ -1047,6 +1085,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         reviewReceipt: result.reviewReceipt,
         coordinatorSignature: result.coordinatorSignature,
         reviewReceiptSource: result.reviewReceiptSource,
+        receiptStorage: result.receiptStorage,
         keeperHubExecutionError: result.keeperHubExecutionError,
         executionId: result.executionId,
         runId: result.runId,
@@ -1133,6 +1172,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
       keeperHubQuery.data?.configured === true
         ? keeperHubQuery.data.keeperExecution
         : undefined,
+    receiptStorage: storedKeeperHubExecution?.receiptStorage,
   });
 
   return (
@@ -1192,8 +1232,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
           </div>
           <div>
             <span className="data-label">Review receipt</span>
-            <strong title={trust.reviewReceiptRoot ?? undefined}>
-              {trust.reviewReceiptRoot ? shortHash(trust.reviewReceiptRoot) : '-'}
+            <strong title={receiptStorageRoot ?? undefined}>
+              {receiptStorageRoot ? shortHash(receiptStorageRoot) : '-'}
             </strong>
           </div>
           <div>
@@ -1225,26 +1265,26 @@ export function TrustDetail({ trustId }: { trustId: string }) {
               <span className="data-label">Review receipt</span>
               <h2>0G receipt artifact</h2>
             </div>
-            <strong>{trust.reviewReceiptRoot ? shortHash(trust.reviewReceiptRoot) : '-'}</strong>
+            <strong>{receiptStorageRoot ? shortHash(receiptStorageRoot) : '-'}</strong>
           </div>
 
           <div className="trust-summary">
             <div>
               <span className="data-label">Root</span>
-              <strong title={trust.reviewReceiptRoot ?? undefined}>
-                {trust.reviewReceiptRoot ? shortHash(trust.reviewReceiptRoot) : '-'}
+              <strong title={receiptStorageRoot ?? undefined}>
+                {receiptStorageRoot ? shortHash(receiptStorageRoot) : '-'}
               </strong>
             </div>
             <div>
               <span className="data-label">URI</span>
-              {trust.reviewReceiptUri ? (
+              {receiptStorageUri ? (
                 <button
                   type="button"
                   className="receipt-uri-button"
-                  title={trust.reviewReceiptUri}
+                  title={receiptStorageUri}
                   onClick={openReceiptArtifactViewer}
                 >
-                  {trust.reviewReceiptUri}
+                  {receiptStorageUri}
                 </button>
               ) : (
                 <strong>-</strong>
@@ -1271,7 +1311,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
           <button
             type="button"
             className="secondary-action"
-            disabled={!trust.reviewReceiptRoot && !trust.reviewReceiptUri}
+            disabled={!receiptStorageRoot && !receiptStorageUri}
             onClick={() => {
               if (receiptArtifactOpen) {
                 setReceiptArtifactOpen(false);

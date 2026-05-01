@@ -1,6 +1,14 @@
 import { shortHash, shortenAddress, txLink } from '../../../format';
 import type { EvidenceMode, SponsorEvidence } from '../../../sponsor-evidence';
 
+const STORAGE_SCAN_GALILEO_URL = 'https://storagescan-galileo.0g.ai';
+
+function storageScanSubmissionLink(sequence: number | undefined) {
+  return typeof sequence === 'number'
+    ? `${STORAGE_SCAN_GALILEO_URL}/submission/${sequence}`
+    : STORAGE_SCAN_GALILEO_URL;
+}
+
 function formatMode(mode: EvidenceMode) {
   if (mode === 'live') return 'Live';
   if (mode === 'simulated') return 'Simulated';
@@ -144,6 +152,15 @@ export function SponsorEvidencePanel({
               label="Manifest"
               value={evidence.storage.manifestUri}
               onOpenStorageUri={onOpenStorageUri}
+            />
+            <EvidenceValue
+              label="StorageScan"
+              value={
+                typeof evidence.storage.submissionSequence === 'number'
+                  ? `Submission ${evidence.storage.submissionSequence}`
+                  : 'Open explorer'
+              }
+              link={storageScanSubmissionLink(evidence.storage.submissionSequence)}
             />
             <EvidenceValue
               label="Root"

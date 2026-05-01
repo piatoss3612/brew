@@ -49,6 +49,7 @@ export type ReviewReceiptGenerationResult = {
     byteSize: number;
     attempts: number;
     txHash?: string;
+    txSeq?: number;
   };
 };
 
@@ -181,6 +182,7 @@ export async function generateReviewReceipt(
         byteSize: receiptStorage.byteSize,
         attempts: receiptStorage.attempts,
         txHash: receiptStorage.txHash,
+        txSeq: receiptStorage.txSeq,
       },
     },
     receiptStorage: {
@@ -189,6 +191,7 @@ export async function generateReviewReceipt(
       byteSize: receiptStorage.byteSize,
       attempts: receiptStorage.attempts,
       txHash: receiptStorage.txHash,
+      txSeq: receiptStorage.txSeq,
     },
   };
 }
