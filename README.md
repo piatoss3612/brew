@@ -8,6 +8,9 @@ executes the onchain release through `AttestationVerifier`.
 The project is intentionally not an "AI moves money" demo. AI agents review the
 evidence and seal a receipt; the contracts still enforce the release rules.
 
+AI was also used as development assistance during the hackathon. See
+[AI usage](docs/ai-usage.md) for the compact disclosure.
+
 ## Current Flow
 
 ```text
@@ -104,6 +107,12 @@ flowchart LR
 
 - [Workflow](docs/workflow.md): system flow and trust boundaries.
 - [Demo runbook](docs/demo-runbook.md): short live-demo checklist.
+- [Submission checklist](docs/submission-checklist.md): final prize and rules
+  review before submitting.
+- [AI usage](docs/ai-usage.md): runtime AI and development-assistance
+  disclosure.
+- [KeeperHub feedback](FEEDBACK.md): integration feedback and reproducible
+  issues.
 - [Contracts](packages/contracts/README.md): deploy, configure, and simulate.
 - [Web](packages/web/README.md): web app setup and runtime env.
 - [Receipt service](packages/receipt-service/README.md): 0G review, storage,
