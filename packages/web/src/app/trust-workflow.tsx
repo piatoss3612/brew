@@ -6,36 +6,10 @@ import { useReadContracts } from 'wagmi';
 
 import { BREW_CHAIN } from '../chain';
 import { erc20Abi } from '../contracts';
-import { formatTrustAmount, readDecimals, readString, shortenAddress, statusLabels } from '../format';
-import { fetchBrewStatus, type BrewTrust } from '../subgraph';
-
-function buildWorkflowSteps(trust?: BrewTrust) {
-  const hasTrust = Boolean(trust);
-  const isVerified = Boolean(trust?.attestationUid || trust?.verifiedAt);
-  const isReleased = trust?.status === 'RELEASED';
-  const isRefunded = trust?.status === 'REFUNDED';
-
-  return [
-    {
-      label: 'Sponsor',
-      state: hasTrust ? 'Funded' : 'Waiting for funding',
-    },
-    {
-      label: 'Verify',
-      state: isVerified ? 'Attestation verified' : 'Attestation pending',
-    },
-    {
-      label: 'Release',
-      state: isReleased
-        ? 'Released'
-        : isRefunded
-          ? 'Refunded'
-          : isVerified
-            ? 'Ready to release'
-            : 'Awaiting verification',
-    },
-  ];
-}
+import { formatTrustAmount, readDecimals, readString } from '../format';
+import { fetchBrewStatus } from '../subgraph';
+import { buildWorkflowSteps, getTrustVisualState } from '../trust-visual-state';
+import { AddressDisplay } from './address-display';
 
 export function TrustWorkflow() {
   const { data, error, isLoading } = useQuery({
@@ -71,12 +45,50 @@ export function TrustWorkflow() {
   const latestTokenSymbol = readString(tokenReads.data?.[0]?.result, 'TOKEN');
   const latestTokenDecimals = readDecimals(tokenReads.data?.[1]?.result);
   const workflowSteps = buildWorkflowSteps(latestTrust);
+  const visualState = getTrustVisualState(latestTrust);
+  const latestAmount = latestTrust
+    ? formatTrustAmount(
+        latestTrust.amount,
+        latestTokenDecimals,
+        latestTokenSymbol,
+        tokenReads.isLoading,
+      )
+    : '-';
 
   return (
     <>
+      <section
+        className={`status-overview status-overview-${visualState.tone}`}
+        aria-label="Latest trust status"
+      >
+        <div className="status-orb" aria-hidden="true" />
+        <div className="status-overview-copy">
+          <span className="data-label">Latest trust state</span>
+          <h2>{visualState.label}</h2>
+          <p>{visualState.detail}</p>
+        </div>
+        <div className="status-overview-meter" aria-label={`${visualState.progress}% complete`}>
+          <span style={{ width: `${visualState.progress}%` }} />
+        </div>
+        <div className="status-overview-facts">
+          <div>
+            <span className="data-label">Trust</span>
+            <strong>{latestTrust ? `#${latestTrust.trustId}` : isLoading ? 'Loading' : 'None'}</strong>
+          </div>
+          <div>
+            <span className="data-label">Amount</span>
+            <strong>{latestAmount}</strong>
+          </div>
+          <div>
+            <span className="data-label">Beneficiary</span>
+            <AddressDisplay address={latestTrust?.beneficiary} />
+          </div>
+        </div>
+      </section>
+
       <section className="workflow" aria-label="Trust workflow">
         {workflowSteps.map((step, index) => (
-          <div className="workflow-row" key={step.label}>
+          <div className={`workflow-row workflow-row-${step.tone}`} key={step.label}>
             <span className="workflow-index">{String(index + 1).padStart(2, '0')}</span>
             <strong>{step.label}</strong>
             <span className="workflow-state">{step.state}</span>
@@ -91,24 +103,17 @@ export function TrustWorkflow() {
         </div>
         <div>
           <span className="data-label">Status</span>
-          <strong>{latestTrust ? statusLabels[latestTrust.status] : '-'}</strong>
+          <span className={`status-badge status-badge-${visualState.tone}`}>
+            {visualState.label}
+          </span>
         </div>
         <div>
           <span className="data-label">Amount</span>
-          <strong>
-            {latestTrust
-              ? formatTrustAmount(
-                  latestTrust.amount,
-                  latestTokenDecimals,
-                  latestTokenSymbol,
-                  tokenReads.isLoading,
-                )
-              : '-'}
-          </strong>
+          <strong>{latestAmount}</strong>
         </div>
         <div>
           <span className="data-label">Beneficiary</span>
-          <strong>{latestTrust ? shortenAddress(latestTrust.beneficiary) : '-'}</strong>
+          <AddressDisplay address={latestTrust?.beneficiary} />
         </div>
         <div>
           <span className="data-label">Templates</span>
@@ -116,11 +121,7 @@ export function TrustWorkflow() {
         </div>
         <div>
           <span className="data-label">Verifier</span>
-          <strong>
-            {data?.verifierConfigs[0]
-              ? shortenAddress(data.verifierConfigs[0].verifier)
-              : '-'}
-          </strong>
+          <AddressDisplay address={data?.verifierConfigs[0]?.verifier} />
         </div>
       </section>
 

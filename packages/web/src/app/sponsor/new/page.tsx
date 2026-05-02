@@ -12,7 +12,7 @@ export default function NewSponsorTrustPage() {
           <p>Create a funded trust</p>
         </div>
         <div className="header-actions">
-          <Link className="secondary-link" href="/">
+          <Link className="secondary-link" href="/app">
             Overview
           </Link>
           <ConnectWalletButton />

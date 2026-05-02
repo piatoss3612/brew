@@ -52,6 +52,8 @@ import {
   type ReviewReceiptStoragePayload,
 } from '../../../sponsor-evidence';
 import { fetchBrewStatus } from '../../../subgraph';
+import { buildWorkflowSteps, getTrustVisualState } from '../../../trust-visual-state';
+import { AddressDisplay } from '../../address-display';
 import { SponsorEvidencePanel } from './sponsor-evidence-panel';
 
 type ActionStep =
@@ -830,12 +832,16 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     return () => window.clearInterval(interval);
   }, []);
 
-  function openReceiptArtifactViewer() {
+  function showReceiptArtifactViewer() {
+    setReceiptArtifactOpen(true);
+  }
+
+  function revealReceiptArtifactViewer() {
     setReceiptArtifactOpen(true);
     window.requestAnimationFrame(() => {
       receiptArtifactSectionRef.current?.scrollIntoView({
         behavior: 'smooth',
-        block: 'start',
+        block: 'nearest',
       });
     });
   }
@@ -1374,29 +1380,161 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     receiptStorage: storedKeeperHubExecution?.receiptStorage,
     storageSubmissionSequence: receiptArtifactTxSeq,
   });
+  const visualState = getTrustVisualState(trust);
+  const workflowSteps = buildWorkflowSteps(trust);
+  const trustAmountLabel = formatTrustAmount(
+    trust.amount,
+    tokenDecimals,
+    tokenSymbol,
+    tokenReads.isLoading,
+  );
+  const agentReleaseVisible = trust.status === 'PENDING' && attestationReady;
+  const primaryControl = isTerminal
+    ? {
+        label: statusLabels[trust.status],
+        disabled: true,
+        onClick: undefined,
+      }
+    : agentReleaseVisible
+      ? {
+          label:
+            keeperHubTriggerState === 'triggering'
+              ? 'Running agent release'
+              : 'Run agent release',
+          disabled: !canTriggerKeeperHub,
+          onClick: canTriggerKeeperHub ? triggerKeeperHubWorkflow : undefined,
+        }
+      : canAttest
+        ? {
+            label: needsNetworkSwitch ? 'Switch and attest' : 'Issue attestation',
+            disabled: false,
+            onClick: issueAttestation,
+          }
+        : {
+            label: !attestationReady ? 'Waiting for attestation' : 'Waiting for release inputs',
+            disabled: true,
+            onClick: undefined,
+          };
+  const reviewStateLabel = hasReviewReceipt
+    ? 'Receipt sealed'
+    : hasKeeperHubTrigger
+      ? 'Review running'
+      : attestationReady
+        ? 'Ready to review'
+        : 'Waiting for proof';
+  const keeperHubStateLabel = trust.releasedTx
+    ? 'Executed'
+    : hasKeeperHubTrigger
+      ? 'Submitted'
+      : 'Not triggered';
 
   return (
     <>
+      <section
+        className={`detail-hero detail-hero-${visualState.tone}`}
+        aria-label="Trust status"
+      >
+        <div className="detail-hero-main">
+          <div className="detail-hero-title">
+            <span className="data-label">Current state</span>
+            <h2>{visualState.label}</h2>
+            <p>{visualState.detail}</p>
+          </div>
+          <span className={`status-badge status-badge-${visualState.tone}`}>
+            {visualState.label}
+          </span>
+        </div>
+
+        <div className="detail-hero-meter" aria-label={`${visualState.progress}% complete`}>
+          <span style={{ width: `${visualState.progress}%` }} />
+        </div>
+
+        <div className="detail-hero-grid">
+          <div>
+            <span className="data-label">Amount</span>
+            <strong>{trustAmountLabel}</strong>
+          </div>
+          <div>
+            <span className="data-label">Beneficiary</span>
+            <AddressDisplay address={trust.beneficiary} />
+          </div>
+          <div>
+            <span className="data-label">Sponsor</span>
+            <AddressDisplay address={trust.sponsor} />
+          </div>
+          <div>
+            <span className="data-label">Token</span>
+            <strong>{tokenSymbol}</strong>
+            <small title={trust.token}>{shortenAddress(trust.token)}</small>
+          </div>
+        </div>
+
+        <div className="detail-primary-action">
+          <div>
+            <span className="data-label">Next action</span>
+            <strong>{primaryControl.label}</strong>
+          </div>
+          <button
+            className="primary-action"
+            disabled={primaryControl.disabled}
+            onClick={primaryControl.onClick}
+          >
+            {primaryControl.label}
+          </button>
+        </div>
+      </section>
+
+      <section className="detail-lifecycle" aria-label="Release lifecycle">
+        {workflowSteps.map((step, index) => (
+          <div className={`detail-lifecycle-step detail-lifecycle-step-${step.tone}`} key={step.label}>
+            <span>{String(index + 1).padStart(2, '0')}</span>
+            <strong>{step.label}</strong>
+            <small>{step.state}</small>
+          </div>
+        ))}
+      </section>
+
+      <section className="detail-proof-stack" aria-label="Release proof stack">
+        <div>
+          <span className="data-label">EAS proof</span>
+          <strong>{attestationReady ? 'Linked' : 'Missing'}</strong>
+          <small title={trimmedAttestationUid}>{attestationReady ? shortHash(trimmedAttestationUid) : 'Attestation UID required'}</small>
+        </div>
+        <div>
+          <span className="data-label">0G review</span>
+          <strong>{reviewStateLabel}</strong>
+          <small title={receiptStorageRoot ?? undefined}>
+            {receiptStorageRoot ? shortHash(receiptStorageRoot) : 'Release council receipt'}
+          </small>
+        </div>
+        <div>
+          <span className="data-label">KeeperHub</span>
+          <strong>{keeperHubStateLabel}</strong>
+          <small title={displayedKeeperHubRunId ?? undefined}>
+            {displayedKeeperHubRunId ?? 'Workflow not submitted'}
+          </small>
+        </div>
+        <div>
+          <span className="data-label">Verifier</span>
+          <strong>{trust.verifiedTx ? 'Accepted' : 'Pending'}</strong>
+          <small title={trust.verifiedTx ?? undefined}>
+            {trust.verifiedTx ? shortHash(trust.verifiedTx) : 'Awaiting release call'}
+          </small>
+        </div>
+      </section>
+
       <section className="detail-panel" aria-label="Trust details">
         <div className="section-heading">
           <div>
-            <span className="data-label">Trust detail</span>
-            <h2>#{trust.trustId}</h2>
+            <span className="data-label">Escrow record</span>
+            <h2>Onchain fields</h2>
           </div>
           <strong>{statusLabels[trust.status]}</strong>
         </div>
-
         <div className="data-panel detail-grid">
           <div>
             <span className="data-label">Amount</span>
-            <strong>
-              {formatTrustAmount(
-                trust.amount,
-                tokenDecimals,
-                tokenSymbol,
-                tokenReads.isLoading,
-              )}
-            </strong>
+            <strong>{trustAmountLabel}</strong>
           </div>
           <div>
             <span className="data-label">Role</span>
@@ -1404,11 +1542,11 @@ export function TrustDetail({ trustId }: { trustId: string }) {
           </div>
           <div>
             <span className="data-label">Sponsor</span>
-            <strong title={trust.sponsor}>{shortenAddress(trust.sponsor)}</strong>
+            <AddressDisplay address={trust.sponsor} />
           </div>
           <div>
             <span className="data-label">Beneficiary</span>
-            <strong title={trust.beneficiary}>{shortenAddress(trust.beneficiary)}</strong>
+            <AddressDisplay address={trust.beneficiary} />
           </div>
           <div>
             <span className="data-label">Token</span>
@@ -1451,7 +1589,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
 
       <SponsorEvidencePanel
         evidence={sponsorEvidence}
-        onOpenStorageUri={openReceiptArtifactViewer}
+        onOpenStorageUri={revealReceiptArtifactViewer}
       />
 
       {hasReviewReceipt ? (
@@ -1482,7 +1620,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                   type="button"
                   className="receipt-uri-button"
                   title={receiptStorageUri}
-                  onClick={openReceiptArtifactViewer}
+                  onClick={showReceiptArtifactViewer}
                 >
                   {receiptStorageUri}
                 </button>
@@ -1644,11 +1782,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             className="secondary-action"
             disabled={!receiptStorageRoot && !receiptStorageUri}
             onClick={() => {
-              if (receiptArtifactOpen) {
-                setReceiptArtifactOpen(false);
-              } else {
-                openReceiptArtifactViewer();
-              }
+              setReceiptArtifactOpen((current) => !current);
             }}
           >
             {receiptArtifactOpen ? 'Hide receipt JSON' : 'View receipt JSON'}
@@ -1805,33 +1939,19 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                   onChange={(event) => updateAttestationUid(event.target.value)}
                 />
               </label>
-              <label className="wide-field">
-                Review receipt JSON
-                <textarea
-                  autoComplete="off"
-                  placeholder='{"trustId":"0","beneficiary":"0x...","attestationUid":"0x..."}'
-                  rows={7}
-                  value={displayedReviewReceiptInput}
-                  onChange={(event) => updateReviewReceiptInput(event.target.value)}
-                />
-              </label>
-              <label className="wide-field">
-                Coordinator signature
-                <input
-                  autoComplete="off"
-                  placeholder="0x..."
-                  value={displayedCoordinatorSignature}
-                  onChange={(event) => updateCoordinatorSignature(event.target.value)}
-                />
-              </label>
             </div>
 
-            <div className="action-row">
-              <button className="primary-action" disabled={!canRelease} onClick={verifyAndRelease}>
-                {needsNetworkSwitch ? 'Switch and manual release' : 'Manual verifier release'}
-              </button>
+            <div className="release-command-panel">
+              <div>
+                <span className="data-label">Agent release path</span>
+                <strong>{reviewStateLabel}</strong>
+                <p>
+                  0G agents review the attestation context, seal a receipt, and hand the
+                  release execution to KeeperHub.
+                </p>
+              </div>
               <button
-                className="secondary-action"
+                className="primary-action"
                 disabled={!canTriggerKeeperHub}
                 onClick={triggerKeeperHubWorkflow}
               >
@@ -1840,6 +1960,34 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                   : 'Run agent release'}
               </button>
             </div>
+
+            <details className="advanced-release-panel">
+              <summary>Advanced manual verifier release</summary>
+              <div className="form-grid input-panel">
+                <label className="wide-field">
+                  Review receipt JSON
+                  <textarea
+                    autoComplete="off"
+                    placeholder='{"trustId":"0","beneficiary":"0x...","attestationUid":"0x..."}'
+                    rows={7}
+                    value={displayedReviewReceiptInput}
+                    onChange={(event) => updateReviewReceiptInput(event.target.value)}
+                  />
+                </label>
+                <label className="wide-field">
+                  Coordinator signature
+                  <input
+                    autoComplete="off"
+                    placeholder="0x..."
+                    value={displayedCoordinatorSignature}
+                    onChange={(event) => updateCoordinatorSignature(event.target.value)}
+                  />
+                </label>
+              </div>
+              <button className="secondary-action" disabled={!canRelease} onClick={verifyAndRelease}>
+                {needsNetworkSwitch ? 'Switch and manual release' : 'Manual verifier release'}
+              </button>
+            </details>
           </>
         ) : !isTerminal ? (
           <>
