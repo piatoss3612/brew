@@ -100,12 +100,55 @@ If `executeRelease=true` but the KeeperHub webhook is not configured or rejects 
 Brew treats Agentic ID as the identity layer for the three review agents: Evidence, Policy, and Risk. The minimal hackathon path is:
 
 1. Use the 0G Agentic ID testnet contract to mint one token per agent.
-2. Store each agent's system prompt/capability metadata on 0G Storage or another content-addressed location.
-3. Put the metadata hash and token id into Railway variables.
-4. Authorize the receipt-service executor address with `authorizeUsage(tokenId, executor, permissions)`.
+2. Store each agent's system prompt/capability metadata on 0G Storage.
+3. Put the metadata root and token id into Railway variables.
+4. Authorize the receipt-service executor address with `authorizeUsage(tokenId, executor)`.
 5. Let `/review-receipt` include those identities in every swarm vote and persisted receipt bundle.
 
 This does not require ERC-7857 transfer/re-encryption in the demo path. Transfer/re-encryption is a later extension; the current proof is identity-bound review provenance.
+
+The mint helper uses the 0G Agentic ID example ABI deployed on Galileo:
+
+```text
+contract: 0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F
+chain id: 16602
+mint: iMint(address to, IntelligentData[] datas)
+authorization: authorizeUsage(uint256 tokenId, address user)
+```
+
+Dry-run the metadata and env output:
+
+```bash
+yarn mint:agentic-ids --dry-run
+```
+
+Mint the three review agents, upload their metadata to 0G Storage, set each token URI, and authorize the configured executor:
+
+```bash
+yarn mint:agentic-ids
+```
+
+If 0G Storage finality is slow during a live demo setup, mint the Agentic IDs first and keep the metadata as on-chain intelligent-data hashes:
+
+```bash
+yarn mint:agentic-ids --skip-storage
+```
+
+The script prints the `BREW_*_AGENTIC_*` values that must be copied into `packages/receipt-service/.env` and Railway.
+
+Current Brew review council Agentic IDs on 0G Galileo:
+
+| Role | Token ID | Agentic ID | Mint tx | Authorization tx |
+| --- | ---: | --- | --- | --- |
+| Evidence | 88 | `0g-galileo:0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F/88` | [0x9188...ae56](https://chainscan-galileo.0g.ai/tx/0x9188b7bb6657e061971a1d7084916e2bfb5ae0fd9fc3944e2bba2740f69aae56) | [0xb079...f605](https://chainscan-galileo.0g.ai/tx/0xb07985b5dd9f76bbcf1e1c7f34f3ef07e391fa50444c92a231a98b1ed8e7f605) |
+| Policy | 89 | `0g-galileo:0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F/89` | [0x8601...6027](https://chainscan-galileo.0g.ai/tx/0x8601b649e626f35c049a222c2a4fc28b42ff12580ebf07ee173a515478466027) | [0x7625...e93](https://chainscan-galileo.0g.ai/tx/0x76251a674faf8f253acf9d154a13dadae590d89df044fbeb233449fbc02fae93) |
+| Risk | 90 | `0g-galileo:0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F/90` | [0x9ea3...5c6f](https://chainscan-galileo.0g.ai/tx/0x9ea3257b1c64403b72d0a3bda53d28bf6c496da3caa148f09d2aa4df8ea15c6f) | [0x7be3...e54](https://chainscan-galileo.0g.ai/tx/0x7be3e5ab05952ca42a7338c012acf2363cc519e63a09fe8018ce57cfea06ae54) |
+
+Agentic ID contract explorer:
+
+```text
+https://chainscan-galileo.0g.ai/address/0x2700F6A3e505402C9daB154C5c6ab9cAEC98EF1F
+```
 
 ## Railway Deployment
 
