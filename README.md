@@ -96,8 +96,8 @@ flowchart LR
 | Item | Value |
 | --- | --- |
 | Chain | Base Sepolia `84532` |
-| Escrow | `0xBB3e0B8f1F31e1dDac553A43F1fcEe305Cff38f2` |
-| Verifier | `0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062` |
+| Escrow | `0x9Ddb398600E37a7b68936D316b6889EE21e0EAe9` |
+| Verifier | `0xe9aD090798B0CEDb2aaCA48d202f02071ccfb7e5` |
 | Demo token | `0x63c972a697dFc788EadC61d9Bdd4BcfEb2abdf7C` |
 | Subgraph | `https://api.studio.thegraph.com/query/71401/brew/version/latest` |
 | Receipt service | `https://receipt-service-production-189c.up.railway.app` |

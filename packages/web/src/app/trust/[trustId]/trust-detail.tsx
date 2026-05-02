@@ -1042,6 +1042,12 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             chainId: BREW_CHAIN.id,
             args: [trust.templateId, address],
           },
+          {
+            address: BREW_VERIFIER_ADDRESS,
+            abi: attestationVerifierAbi,
+            functionName: 'demoOpenIssuerMode',
+            chainId: BREW_CHAIN.id,
+          },
         ]
       : [],
     query: {
@@ -1071,6 +1077,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   );
   const evidenceUploadFieldNames = evidenceUploadFields.map((field) => field.name).join(', ');
   const issuerAllowed = issuerReads.data?.[0]?.result === true;
+  const demoOpenIssuerMode = issuerReads.data?.[1]?.result === true;
+  const canIssueAttestation = issuerAllowed || demoOpenIssuerMode;
   const attestationExpiryWindow = Number(template?.expiryWindowSeconds ?? '0');
   const attestationExpirationSeconds =
     attestationExpiryWindow > 0
@@ -1121,7 +1129,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     Boolean(trust) &&
     trust?.status === 'PENDING' &&
     isConnected &&
-    issuerAllowed &&
+    canIssueAttestation &&
     Boolean(publicClient) &&
     Boolean(beneficiaryAddress) &&
     Boolean(schemaRecord) &&
@@ -1494,7 +1502,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     trust,
     template,
     attestationUid: createdAttestationUid ?? (attestationReady ? trimmedAttestationUid : undefined),
-    connectedIssuer: issuerAllowed ? address : undefined,
+    connectedIssuer: canIssueAttestation ? address : undefined,
     keeperExecution:
       keeperHubQuery.data?.configured === true
         ? keeperHubQuery.data.keeperExecution
@@ -1933,7 +1941,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
           {createdAttestationUid ? <strong>{shortHash(createdAttestationUid)}</strong> : null}
         </div>
 
-        {!isTerminal && issuerAllowed ? (
+        {!isTerminal && canIssueAttestation ? (
           <>
             <div className="trust-summary">
               <div>
@@ -1954,9 +1962,14 @@ export function TrustDetail({ trustId }: { trustId: string }) {
               </div>
               <div>
                 <span className="data-label">Issuer permission</span>
-                <strong>Allowed</strong>
+                <strong>{demoOpenIssuerMode ? 'Demo open' : 'Allowed'}</strong>
               </div>
             </div>
+            {demoOpenIssuerMode ? (
+              <p className="form-note">
+                Demo issuer mode is enabled: any connected wallet can issue this template.
+              </p>
+            ) : null}
 
             <div className="form-grid input-panel">
               {schemaFields.map((field) => (
@@ -2073,11 +2086,13 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         ) : isTerminal ? (
           <p className="form-note">Status: {statusLabels[trust.status]}</p>
         ) : (
-          <p className="form-note">Connect an allowlisted issuer wallet to issue an attestation.</p>
+          <p className="form-note">
+            Connect an allowlisted issuer wallet, or enable demo open issuer mode.
+          </p>
         )}
 
         {!isConnected ? <p className="form-note">Connect a wallet to view issuer actions.</p> : null}
-        {isConnected && issuerReads.isFetched && !issuerAllowed && !isTerminal ? (
+        {isConnected && issuerReads.isFetched && !canIssueAttestation && !isTerminal ? (
           <p className="form-note">Connected wallet is not allowlisted for this template.</p>
         ) : null}
         {schemaReads.isLoading ? <p className="form-note">Reading EAS schema fields.</p> : null}

@@ -2,9 +2,9 @@ import { getAddress, isAddress, type Address } from 'viem';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
 const DEFAULT_BREW_ESCROW_ADDRESS =
-  '0xBB3e0B8f1F31e1dDac553A43F1fcEe305Cff38f2' as Address;
+  '0x9Ddb398600E37a7b68936D316b6889EE21e0EAe9' as Address;
 const DEFAULT_BREW_VERIFIER_ADDRESS =
-  '0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062' as Address;
+  '0xe9aD090798B0CEDb2aaCA48d202f02071ccfb7e5' as Address;
 const DEFAULT_BREW_TOKEN_ADDRESS =
   '0x63c972a697dFc788EadC61d9Bdd4BcfEb2abdf7C' as Address;
 
@@ -137,6 +137,13 @@ export const attestationVerifierAbi = [
       { name: 'templateId', type: 'bytes32' },
       { name: 'issuer', type: 'address' },
     ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'demoOpenIssuerMode',
+    stateMutability: 'view',
+    inputs: [],
     outputs: [{ name: '', type: 'bool' }],
   },
   {

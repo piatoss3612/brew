@@ -152,7 +152,8 @@ coordinator.
 - EAS attestation exists, is not revoked, and is not stale;
 - attestation schema matches the selected Brew template;
 - attestation recipient matches the trust beneficiary;
-- issuer is allowlisted for the selected template;
+- issuer is allowlisted for the selected template, unless demo open issuer mode
+  is explicitly enabled;
 - receipt fields match the trust and attestation;
 - receipt verdict recommends release;
 - receipt has not expired;
@@ -184,3 +185,11 @@ When explaining Brew, emphasize these points first:
 - KeeperHub remains visible as the execution workflow that submits the release
   transaction.
 - The Graph turns the onchain events into the app's status model.
+
+## Demo Boundary
+
+For live judging, Brew can enable `demoOpenIssuerMode` on `AttestationVerifier`.
+This lets any connected wallet issue a demo EAS attestation for a registered
+template, while preserving schema, recipient, freshness, receipt, signature, and
+escrow checks. A production-style deployment should keep this disabled and rely
+on issuer allowlists.

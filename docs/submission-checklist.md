@@ -74,6 +74,8 @@ Agents.
   implementation.
 - AI-assisted development is disclosed at category level.
 - Demo uses public testnet contracts and non-sensitive sample evidence.
+- Demo open issuer mode may be enabled for judging convenience; explain that a
+  production-style deployment would disable it and use issuer allowlists.
 - Public IPFS uploads are demo-safe only; sensitive real-world evidence would
   require encryption or a privacy-preserving storage path.
 

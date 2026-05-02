@@ -1,12 +1,12 @@
 {
   "base-sepolia": {
     "BrewEscrow": {
-      "address": "0xBB3e0B8f1F31e1dDac553A43F1fcEe305Cff38f2",
-      "startBlock": 40929777
+      "address": "0x9Ddb398600E37a7b68936D316b6889EE21e0EAe9",
+      "startBlock": 40974389
     },
     "AttestationVerifier": {
-      "address": "0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062",
-      "startBlock": 40929778
+      "address": "0xe9aD090798B0CEDb2aaCA48d202f02071ccfb7e5",
+      "startBlock": 40974390
     }
   }
 }
