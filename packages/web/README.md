@@ -54,6 +54,18 @@ KEEPERHUB_API_KEY=
 KEEPERHUB_API_BASE_URL=
 ```
 
+Optional issuer evidence uploads:
+
+```env
+PINATA_JWT=
+NEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs/
+```
+
+`PINATA_JWT` is used only by `/api/ipfs/upload`. The client uploads a file to
+that route, the route pins it to public IPFS, then the trust detail page fills
+matching EAS fields such as `deliverable_uri`, `deliverable_hash`,
+`report_uri`, `report_hash`, or `verification_source`.
+
 Keep these out of the web app:
 
 ```text

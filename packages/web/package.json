@@ -10,6 +10,7 @@
     "killtest:0g-review": "node scripts/killtest-0g-review.mjs",
     "killtest:0g-storage-receipt": "node scripts/killtest-0g-storage-receipt.mjs",
     "killtest:0g-storage-retrieve": "node scripts/killtest-0g-storage-retrieve.mjs",
+    "test:ipfs-evidence": "node --test scripts/ipfs-evidence.test.mjs",
     "test:0g-storage": "node --test scripts/zero-g-storage.test.mjs",
     "start": "next start"
   },
