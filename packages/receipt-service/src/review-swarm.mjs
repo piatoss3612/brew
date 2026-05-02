@@ -5,6 +5,7 @@ const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const SWARM_NAME = 'Brew Release Council';
 const SWARM_COORDINATION_MODE = 'parallel-independent-review';
 const SWARM_QUORUM_RULE = 'evidence approve + policy approve + risk no-veto';
+const REVIEW_COMPUTE_CONCURRENCY = 2;
 
 const REVIEW_AGENTS = [
   {
@@ -55,8 +56,10 @@ export async function runReviewSwarm(input, config, options = {}) {
     ...agent,
     identity: agenticIds.find((identity) => identity.role === agent.role) ?? { role: agent.role },
   }));
-  const votes = await Promise.all(
-    agents.map((agent) => runReviewAgent(agent, reviewContext, config, fetchImpl)),
+  const votes = await mapWithConcurrency(
+    agents,
+    REVIEW_COMPUTE_CONCURRENCY,
+    (agent) => runReviewAgent(agent, reviewContext, config, fetchImpl),
   );
   const decisionByRole = Object.fromEntries(votes.map((vote) => [vote.role, vote.decision]));
   const releaseReady =
@@ -245,6 +248,24 @@ function normalizeAgentReview(agent, review, raw) {
     receiptSummary: pickString(review?.receiptSummary),
     raw,
   };
+}
+
+async function mapWithConcurrency(items, limit, task) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await task(items[index], index);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
+  );
+  return results;
 }
 
 function blockedReview(input, summary) {

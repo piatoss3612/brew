@@ -65,26 +65,23 @@ test('runReviewSwarm reaches release quorum with mocked 0G responses', async () 
   assert.deepEqual(result.votes.map((vote) => vote.role), ['evidence', 'policy', 'risk']);
 });
 
-test('runReviewSwarm starts specialist reviews in parallel', async () => {
+test('runReviewSwarm limits active 0G Compute requests to provider concurrency', async () => {
   const startedRoles = [];
-  let releaseAll;
-  const allReleased = new Promise((resolve) => {
-    releaseAll = resolve;
-  });
-  let resolveAllStarted;
-  const allStarted = new Promise((resolve) => {
-    resolveAllStarted = resolve;
-  });
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
 
-  const resultPromise = runReviewSwarm(VALID_INPUT, VALID_CONFIG, {
+  const result = await runReviewSwarm(VALID_INPUT, VALID_CONFIG, {
     fetchImpl: async (_url, init) => {
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+
       const body = JSON.parse(init.body);
       const prompt = body.messages[1].content;
       const role = roleFromPrompt(prompt);
       startedRoles.push(role);
-      if (startedRoles.length === 3) resolveAllStarted(true);
 
-      await allReleased;
+      await delay(10);
+      activeRequests -= 1;
       return jsonResponse({
         id: `chatcmpl-${role}`,
         choices: [
@@ -98,14 +95,7 @@ test('runReviewSwarm starts specialist reviews in parallel', async () => {
     },
   });
 
-  const reachedParallelStart = await Promise.race([
-    allStarted,
-    delay(50).then(() => false),
-  ]);
-  releaseAll();
-  const result = await resultPromise;
-
-  assert.equal(reachedParallelStart, true);
+  assert.equal(maxActiveRequests, 2);
   assert.deepEqual(startedRoles, ['evidence', 'policy', 'risk']);
   assert.equal(result.releaseReady, true);
   assert.equal(result.swarm.coordinationMode, 'parallel-independent-review');
