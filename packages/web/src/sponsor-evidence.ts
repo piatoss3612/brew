@@ -116,6 +116,12 @@ export type KeeperHubTriggerPayload = {
   verifierAddress?: string;
   templateId?: string;
   schemaUid?: string;
+  token?: string;
+  amount?: string;
+  deadline?: string;
+  released?: boolean;
+  refunded?: boolean;
+  executeRelease?: boolean;
 };
 
 export type ReviewReceiptPayload = {
@@ -137,6 +143,7 @@ export type ReviewReceiptStoragePayload = {
   byteSize: number;
   attempts: number;
   txHash?: string;
+  txSeq?: number;
 };
 
 export type KeeperHubTriggerApiResponse =
@@ -151,8 +158,13 @@ export type KeeperHubTriggerApiResponse =
       runId?: string;
       reviewReceipt?: ReviewReceiptPayload;
       coordinatorSignature?: string;
-      reviewReceiptSource?: 'keeperhub-workflow' | 'trigger-api-fallback';
+      reviewReceiptSource?:
+        | 'keeperhub-workflow'
+        | 'trigger-api-receipt-service'
+        | 'receipt-service-keeperhub-webhook';
       receiptError?: string;
+      keeperHubExecutionError?: string;
+      keeperHubMissing?: string[];
       receiptDigestInput?: unknown;
       receiptStorage?: ReviewReceiptStoragePayload;
       status?: string;
@@ -215,6 +227,9 @@ export type SponsorEvidence = {
     manifestUri: string;
     metadataRoot: string;
     receiptKey?: string;
+    coordinator?: string;
+    reviewedTx?: string;
+    submissionSequence?: number;
   };
   receipt: BrewEvidenceReceipt;
   verifier: {
@@ -241,10 +256,6 @@ const AGENT_INTERVENTION: BrewEvidenceReceipt['agentIntervention'] = {
   responsibility: 'Assemble trust state, attestation UID, execution status, and receipt evidence for the release attempt.',
   boundary: 'The agent prepares and explains the execution; AttestationVerifier and BrewEscrow decide whether funds can move.',
 };
-
-function placeholderRoot(trustId: string) {
-  return `simulated-root:brew:${trustId}`;
-}
 
 function verifierOutcome(trust: BrewTrust): SponsorEvidence['verifier']['outcome'] {
   if (trust.status === 'RELEASED') return 'released';
@@ -399,7 +410,7 @@ export function normalizeKeeperHubExecution(input: {
     startedAt: input.execution?.startedAt,
     completedAt: input.execution?.completedAt,
     status: mapKeeperHubStatus(status),
-    action: 'verifyAndRelease(uint256,address,bytes32)',
+    action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
     txHash,
     revertReason,
     nodeStatusSummary:
@@ -449,7 +460,7 @@ function simulateKeeperExecution(input: {
       executionMode: 'simulated',
       runId,
       status: 'completed',
-      action: 'verifyAndRelease(uint256,address,bytes32)',
+      action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
       txHash: trust.verifiedTx ?? undefined,
       nodeStatusSummary: 'Simulated KeeperHub run completed after verifier accepted the EAS proof.',
       phases: [
@@ -466,7 +477,7 @@ function simulateKeeperExecution(input: {
         {
           name: 'execute',
           status: 'completed',
-          summary: 'Submitted verifyAndRelease and observed the release transaction.',
+          summary: 'Submitted verifyAndReleaseWithReceiptFields with review receipt fields and observed the release transaction.',
         },
         {
           name: 'explain',
@@ -483,7 +494,7 @@ function simulateKeeperExecution(input: {
       executionMode: 'simulated',
       runId,
       status: 'blocked',
-      action: 'verifyAndRelease(uint256,address,bytes32)',
+      action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
       revertReason: 'TrustAlreadyRefunded',
       nodeStatusSummary: 'Simulated KeeperHub run stopped because the trust is already refunded.',
       phases: [
@@ -516,7 +527,7 @@ function simulateKeeperExecution(input: {
       workflowId: KEEPER_WORKFLOW_ID,
       executionMode: 'simulated',
       status: 'waiting',
-      action: 'verifyAndRelease(uint256,address,bytes32)',
+      action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
       nodeStatusSummary: 'Waiting for an attestation UID before KeeperHub can execute release.',
       phases: [
         {
@@ -548,7 +559,7 @@ function simulateKeeperExecution(input: {
     executionMode: 'simulated',
     runId,
     status: 'ready',
-    action: 'verifyAndRelease(uint256,address,bytes32)',
+    action: 'verifyAndReleaseWithReceiptFields(uint256,address,bytes32,bytes32,string,address,uint64,uint64,bytes)',
     nodeStatusSummary: 'Simulated KeeperHub preflight is ready to submit verifier execution.',
     phases: [
       {
@@ -582,6 +593,7 @@ function buildEvidenceReceipt(input: {
 }): BrewEvidenceReceipt {
   const { trust, keeperExecution, attestationUid } = input;
   const issuedAt = receiptIssuedAt(trust, keeperExecution);
+  const liveReceiptRoot = trust.reviewReceiptRoot ?? undefined;
   const digestInput = {
     version: 'brew.receipt.v1',
     trustId: trust.trustId,
@@ -598,12 +610,12 @@ function buildEvidenceReceipt(input: {
     revertReason: keeperExecution.revertReason,
     issuedAt,
   };
-  const receiptDigest = keccak256(toHex(JSON.stringify(digestInput)));
+  const receiptDigest = liveReceiptRoot ?? keccak256(toHex(JSON.stringify(digestInput)));
 
   return {
     version: 'brew.receipt.v1',
     key: `evidence:${trust.trustId}:${receiptDigest.slice(2, 14)}`,
-    mode: 'simulated',
+    mode: liveReceiptRoot ? 'live' : 'simulated',
     receiptDigest,
     trustId: trust.trustId,
     templateId: trust.templateId,
@@ -633,6 +645,7 @@ function receiptIssuedAt(trust: BrewTrust, keeperExecution: KeeperExecutionResul
   return (
     keeperExecution.completedAt ??
     keeperExecution.startedAt ??
+    timestampSecondsToIso(trust.reviewedAt) ??
     timestampSecondsToIso(trust.verifiedAt) ??
     timestampSecondsToIso(trust.releasedAt) ??
     timestampSecondsToIso(trust.refundedAt) ??
@@ -647,8 +660,18 @@ export function buildSponsorEvidence(input: {
   attestationUid?: string | null;
   connectedIssuer?: string;
   keeperExecution?: KeeperExecutionResult;
+  receiptStorage?: ReviewReceiptStoragePayload;
+  storageSubmissionSequence?: number;
 }): SponsorEvidence {
-  const { trust, template, attestationUid, connectedIssuer, keeperExecution } = input;
+  const {
+    trust,
+    template,
+    attestationUid,
+    connectedIssuer,
+    keeperExecution,
+    receiptStorage,
+    storageSubmissionSequence,
+  } = input;
   const effectiveAttestationUid = attestationUid ?? trust.attestationUid ?? undefined;
   const keeperInput = buildKeeperInput(trust, template, effectiveAttestationUid);
   const resolvedKeeperExecution =
@@ -658,6 +681,15 @@ export function buildSponsorEvidence(input: {
     keeperExecution: resolvedKeeperExecution,
     attestationUid: effectiveAttestationUid,
   });
+  const manifestUri =
+    trust.reviewReceiptUri ??
+    receiptStorage?.uri ??
+    `0g://simulated/brew/trust/${trust.trustId}/manifest.json`;
+  const metadataRoot = trust.reviewReceiptRoot ?? receiptStorage?.rootHash ?? receipt.receiptDigest;
+  const storageStatus: EvidenceMode =
+    (trust.reviewReceiptRoot && trust.reviewReceiptUri) || receiptStorage?.rootHash
+      ? 'live'
+      : 'simulated';
 
   return {
     agent: {
@@ -668,8 +700,8 @@ export function buildSponsorEvidence(input: {
       records: {
         'com.brew.role': 'trust-operations-agent',
         'com.brew.keeperhub_workflow': KEEPER_WORKFLOW_ID,
-        'com.brew.0g_root': placeholderRoot(trust.trustId),
-        'com.brew.manifest_uri': `0g://simulated/brew/trust/${trust.trustId}/manifest.json`,
+        'com.brew.0g_root': metadataRoot,
+        'com.brew.manifest_uri': manifestUri,
         'com.brew.app': 'planned-audit-url',
       },
     },
@@ -684,10 +716,13 @@ export function buildSponsorEvidence(input: {
     },
     storage: {
       provider: '0G',
-      storageStatus: 'simulated',
-      manifestUri: `0g://simulated/brew/trust/${trust.trustId}/manifest.json`,
-      metadataRoot: receipt.receiptDigest,
+      storageStatus,
+      manifestUri,
+      metadataRoot,
       receiptKey: receipt.key,
+      coordinator: trust.reviewCoordinator ?? undefined,
+      reviewedTx: trust.reviewedTx ?? undefined,
+      submissionSequence: receiptStorage?.txSeq ?? storageSubmissionSequence,
     },
     receipt,
     verifier: {

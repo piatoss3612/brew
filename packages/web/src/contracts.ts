@@ -1,19 +1,37 @@
-import type { Address } from 'viem';
+import { getAddress, isAddress, type Address } from 'viem';
 
-export const BREW_ESCROW_ADDRESS =
-  '0xED5160554F93138c7f537bC1C99BFa475c97E622' as Address;
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
+const DEFAULT_BREW_ESCROW_ADDRESS =
+  '0xBB3e0B8f1F31e1dDac553A43F1fcEe305Cff38f2' as Address;
+const DEFAULT_BREW_VERIFIER_ADDRESS =
+  '0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062' as Address;
+const DEFAULT_BREW_TOKEN_ADDRESS =
+  '0x63c972a697dFc788EadC61d9Bdd4BcfEb2abdf7C' as Address;
 
-export const BREW_VERIFIER_ADDRESS =
-  '0xE8a519bB3B47864c6aB49e97D6338DAF5217aF6a' as Address;
+function publicAddress(value: string | undefined, fallback: Address = ZERO_ADDRESS) {
+  return value && isAddress(value, { strict: false }) ? getAddress(value) : fallback;
+}
 
-export const BREW_TOKEN_ADDRESS =
-  '0xee8f180727440e8068ec927ba181794a63b43741' as Address;
+export const BREW_ESCROW_ADDRESS = publicAddress(
+  process.env.NEXT_PUBLIC_BREW_ESCROW_ADDRESS,
+  DEFAULT_BREW_ESCROW_ADDRESS,
+);
+
+export const BREW_VERIFIER_ADDRESS = publicAddress(
+  process.env.NEXT_PUBLIC_BREW_VERIFIER_ADDRESS,
+  DEFAULT_BREW_VERIFIER_ADDRESS,
+);
+
+export const BREW_TOKEN_ADDRESS = publicAddress(
+  process.env.NEXT_PUBLIC_BREW_TOKEN_ADDRESS,
+  DEFAULT_BREW_TOKEN_ADDRESS,
+);
 
 export const EAS_ADDRESS =
-  '0xC2679fBD37d54388Ce493F1DB75320D236e1815e' as Address;
+  '0x4200000000000000000000000000000000000021' as Address;
 
 export const EAS_SCHEMA_REGISTRY_ADDRESS =
-  '0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0' as Address;
+  '0x4200000000000000000000000000000000000020' as Address;
 
 export const erc20Abi = [
   {
@@ -123,12 +141,18 @@ export const attestationVerifierAbi = [
   },
   {
     type: 'function',
-    name: 'verifyAndRelease',
+    name: 'verifyAndReleaseWithReceiptFields',
     stateMutability: 'nonpayable',
     inputs: [
       { name: 'trustId', type: 'uint256' },
       { name: 'beneficiary', type: 'address' },
       { name: 'attestationUid', type: 'bytes32' },
+      { name: 'receiptRoot', type: 'bytes32' },
+      { name: 'receiptUri', type: 'string' },
+      { name: 'coordinator', type: 'address' },
+      { name: 'createdAt', type: 'uint64' },
+      { name: 'expiresAt', type: 'uint64' },
+      { name: 'coordinatorSignature', type: 'bytes' },
     ],
     outputs: [],
   },

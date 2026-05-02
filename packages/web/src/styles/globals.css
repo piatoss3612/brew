@@ -580,6 +580,242 @@ h1 {
   font-size: 0.78rem;
 }
 
+.receipt-json {
+  max-height: 360px;
+  max-width: 100%;
+  margin: 0;
+  padding: 16px;
+  color: #14110f;
+  border: 1px solid rgba(20, 17, 15, 0.12);
+  background: rgba(255, 255, 255, 0.64);
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow: auto;
+  word-break: break-word;
+}
+
+.json-node,
+.json-children {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.json-node summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #706a61;
+  cursor: pointer;
+}
+
+.json-children {
+  margin-left: 16px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(20, 17, 15, 0.1);
+}
+
+.json-leaf {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.json-key {
+  flex: 0 0 auto;
+  color: #5b5147;
+  font-weight: 700;
+}
+
+.json-key::after {
+  content: ":";
+}
+
+.json-structure {
+  color: rgba(112, 106, 97, 0.78);
+}
+
+.json-string {
+  color: #17603d;
+}
+
+.json-number,
+.json-boolean {
+  color: #804b12;
+}
+
+.json-null {
+  color: #8f2f18;
+}
+
+.receipt-uri-button {
+  max-width: 100%;
+  padding: 0;
+  color: #706a61;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 700;
+  overflow: hidden;
+  text-align: left;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  text-underline-offset: 4px;
+  white-space: nowrap;
+}
+
+.receipt-uri-button:hover {
+  color: #14110f;
+}
+
+.swarm-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(20, 17, 15, 0.12);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.swarm-panel-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.swarm-panel-header > div,
+.swarm-vote-main,
+.swarm-divergences {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.swarm-panel-header strong,
+.swarm-meta strong,
+.swarm-vote strong,
+.swarm-divergences strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.swarm-meta {
+  display: grid;
+  grid-template-columns: 1.4fr 0.7fr 0.9fr;
+  gap: 10px;
+}
+
+.swarm-meta > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(20, 17, 15, 0.08);
+  background: rgba(246, 244, 239, 0.58);
+}
+
+.agent-identity-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(20, 17, 15, 0.1);
+  background: rgba(246, 244, 239, 0.5);
+}
+
+.agent-identity-header,
+.agent-identity-title {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-identity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.agent-identity-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(20, 17, 15, 0.1);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.agent-identity-card strong,
+.agent-identity-card a {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-identity-values {
+  display: grid;
+  grid-template-columns: minmax(78px, 0.58fr) minmax(0, 1fr);
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.agent-identity-values span {
+  color: #706a61;
+  font-size: 0.78rem;
+}
+
+.agent-identity-values strong,
+.agent-identity-values a {
+  font-size: 0.78rem;
+}
+
+.swarm-vote-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.swarm-vote {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(20, 17, 15, 0.1);
+  background: rgba(20, 17, 15, 0.035);
+}
+
+.swarm-vote-values {
+  display: grid;
+  grid-template-columns: minmax(78px, 0.6fr) minmax(0, 1fr);
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.swarm-vote-values span {
+  color: #706a61;
+  font-size: 0.78rem;
+}
+
+.swarm-vote-values strong {
+  font-size: 0.78rem;
+}
+
+.swarm-divergences {
+  padding-top: 12px;
+  border-top: 1px solid rgba(20, 17, 15, 0.1);
+}
+
 .form-note,
 .tx-link {
   max-width: 100%;
@@ -737,6 +973,12 @@ h1 {
   }
 
   .schema-field-list {
+    grid-template-columns: 1fr;
+  }
+
+  .swarm-meta,
+  .agent-identity-grid,
+  .swarm-vote-grid {
     grid-template-columns: 1fr;
   }
 

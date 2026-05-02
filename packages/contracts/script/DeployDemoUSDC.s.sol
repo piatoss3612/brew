@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
-/// @notice Optional demo token when a routed Sepolia USDC is not used.
+/// @notice Optional demo token when a routed Base Sepolia token is not used.
 contract DemoUSDC is ERC20 {
     constructor() ERC20("Brew Demo USDC", "bUSDC") {}
 

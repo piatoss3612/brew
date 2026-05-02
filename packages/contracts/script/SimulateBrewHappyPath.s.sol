@@ -27,7 +27,7 @@ contract ForkBrewToken is ERC20 {
     }
 }
 
-/// @notice Full happy-path simulation against the deployed Sepolia contracts.
+/// @notice Full happy-path simulation against the deployed Base Sepolia contracts.
 /// @dev Run without --broadcast. EAS UIDs include block.timestamp, so live
 ///      attestation + release must be split into separate real transactions.
 contract SimulateBrewHappyPath is Script {
@@ -52,7 +52,7 @@ contract SimulateBrewHappyPath is Script {
         coordinator = vm.addr(coordinatorPrivateKey);
         escrow = BrewEscrow(vm.envAddress("BREW_ESCROW_ADDRESS"));
         verifier = AttestationVerifier(vm.envAddress("BREW_VERIFIER_ADDRESS"));
-        eas = IEAS(BrewConfig.SEPOLIA_EAS);
+        eas = IEAS(BrewConfig.BASE_SEPOLIA_EAS);
         console2.log("ACTOR=%s", actor);
         console2.log("BREW_REVIEW_COORDINATOR_ADDRESS=%s", coordinator);
         console2.log("BREW_ESCROW_ADDRESS=%s", address(escrow));
@@ -109,8 +109,18 @@ contract SimulateBrewHappyPath is Script {
         console2.log("REVIEW_RECEIPT_DIGEST=");
         console2.logBytes32(receiptDigest);
 
-        console2.log("STEP 9/9 verify receipt + attestation and release funds");
-        verifier.verifyAndRelease(trustId, actor, attestationUid, reviewReceipt, coordinatorSignature);
+        console2.log("STEP 9/9 verify receipt fields + attestation and release funds");
+        verifier.verifyAndReleaseWithReceiptFields(
+            trustId,
+            actor,
+            attestationUid,
+            reviewReceipt.receiptRoot,
+            reviewReceipt.receiptUri,
+            reviewReceipt.coordinator,
+            reviewReceipt.createdAt,
+            reviewReceipt.expiresAt,
+            coordinatorSignature
+        );
         vm.stopPrank();
 
         require(escrow.isReleased(trustId, actor), "trust was not released");

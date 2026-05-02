@@ -67,6 +67,7 @@ test('buildReceiptArtifact stores a swarm review bundle without signature or sto
       rule: 'evidence approve + risk pass',
       verdict: 'ReleaseRecommended',
       releaseReady: true,
+      divergences: [],
     },
     coordinator: '0x965B0E63e00E7805569ee3B428Cf96330DFc57EF',
     createdAt: 1777177200,
@@ -84,12 +85,36 @@ test('buildReceiptArtifact stores a swarm review bundle without signature or sto
   });
   assert.equal(artifact.reviewCouncil.coordinator, '0x965B0E63e00E7805569ee3B428Cf96330DFc57EF');
   assert.deepEqual(artifact.reviewCouncil.agenticIds, AGENTIC_IDS);
+  assert.deepEqual(artifact.swarm, {
+    name: 'Brew Release Council',
+    coordinationMode: 'parallel-independent-review',
+    quorumRule: 'evidence approve + risk pass',
+    sharedContextDigest: artifact.swarm.sharedContextDigest,
+    roles: ['evidence', 'risk'],
+    rounds: [
+      {
+        round: 1,
+        mode: 'parallel-independent-review',
+        votes: VOTES,
+        aggregate: {
+          rule: 'evidence approve + risk pass',
+          verdict: 'ReleaseRecommended',
+          releaseReady: true,
+          rationale: [],
+          divergences: [],
+        },
+        divergences: [],
+      },
+    ],
+  });
+  assert.match(artifact.swarm.sharedContextDigest, /^0x[0-9a-f]{64}$/);
   assert.deepEqual(artifact.votes, VOTES);
   assert.deepEqual(artifact.aggregate, {
     rule: 'evidence approve + risk pass',
     verdict: 'ReleaseRecommended',
     releaseReady: true,
     rationale: [],
+    divergences: [],
   });
   assert.deepEqual(artifact.receipt, {
     verdict: 'ReleaseRecommended',
@@ -119,6 +144,7 @@ test('buildReceiptArtifact wraps legacy single review as an operations vote', ()
 test('normalizeReviewReceiptInput accepts swarm fields from request bodies', () => {
   const input = normalizeReviewReceiptInput({
     ...VALID_INPUT,
+    executeRelease: true,
     agenticIds: AGENTIC_IDS,
     votes: VOTES,
     aggregate: {
@@ -130,6 +156,7 @@ test('normalizeReviewReceiptInput accepts swarm fields from request bodies', () 
 
   assert.deepEqual(input.agenticIds, AGENTIC_IDS);
   assert.deepEqual(input.votes, VOTES);
+  assert.equal(input.executeRelease, true);
   assert.deepEqual(input.aggregate, {
     rule: 'evidence approve + risk pass',
     verdict: 'ReleaseRecommended',

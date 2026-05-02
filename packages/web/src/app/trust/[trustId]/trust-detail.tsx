@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   decodeEventLog,
   encodeAbiParameters,
@@ -19,8 +19,8 @@ import {
   useSwitchChain,
   useWriteContract,
 } from 'wagmi';
-import { sepolia } from 'wagmi/chains';
 
+import { BREW_CHAIN } from '../../../chain';
 import {
   BREW_ESCROW_ADDRESS,
   BREW_VERIFIER_ADDRESS,
@@ -45,7 +45,12 @@ import {
   txLink,
 } from '../../../format';
 import { fetchKeeperHubEvidence, triggerKeeperHubRelease } from '../../../keeperhub';
-import { buildSponsorEvidence } from '../../../sponsor-evidence';
+import { fetchReviewReceiptArtifact } from '../../../review-receipt-artifact';
+import {
+  buildSponsorEvidence,
+  type ReviewReceiptPayload,
+  type ReviewReceiptStoragePayload,
+} from '../../../sponsor-evidence';
 import { fetchBrewStatus } from '../../../subgraph';
 import { SponsorEvidencePanel } from './sponsor-evidence-panel';
 
@@ -59,10 +64,19 @@ type ActionStep =
   | 'error';
 type ActiveAction = 'attest' | 'release' | 'refund';
 type KeeperHubTriggerState = 'idle' | 'triggering' | 'submitted' | 'error';
+type ReviewReceiptSource =
+  | 'keeperhub-workflow'
+  | 'trigger-api-receipt-service'
+  | 'receipt-service-keeperhub-webhook';
 type StoredKeeperHubExecution = {
   version: 1;
   trustId: string;
   attestationUid?: string;
+  reviewReceipt?: ReviewReceiptPayload;
+  coordinatorSignature?: string;
+  reviewReceiptSource?: ReviewReceiptSource;
+  receiptStorage?: ReviewReceiptStoragePayload;
+  keeperHubExecutionError?: string;
   executionId?: string;
   runId?: string;
   status?: string;
@@ -89,12 +103,42 @@ type SchemaField = {
   type: string;
   name: string;
 };
+type SwarmIdentity = {
+  role: string;
+  agenticId?: string;
+  chain?: string;
+  contract?: string;
+  tokenId?: string;
+  metadataHash?: string;
+  authorizedExecutor?: string;
+};
+type SwarmVote = SwarmIdentity & {
+  decision: string;
+  responseId?: string;
+  responseKey?: string;
+  rationale: string[];
+  riskFlags: string[];
+};
+type SwarmSnapshot = {
+  name: string;
+  coordinationMode: string;
+  quorumRule: string;
+  sharedContextDigest?: string;
+  verdict?: string;
+  releaseReady?: boolean;
+  divergences: string[];
+  identities: SwarmIdentity[];
+  votes: SwarmVote[];
+};
 
 const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+const SIGNATURE_PATTERN = /^0x[0-9a-fA-F]{130}$/;
 const ATTESTATION_DRAFT_STORAGE_EVENT = 'brew:attestation-draft-storage';
 const ATTESTATION_DRAFT_STORAGE_PREFIX = 'brew:attestation-draft:v1';
 const KEEPERHUB_EXECUTION_STORAGE_EVENT = 'brew:keeperhub-execution-storage';
 const KEEPERHUB_EXECUTION_STORAGE_PREFIX = 'brew:keeperhub-execution:v1';
+const ZERO_G_CHAINSCAN_GALILEO_URL = 'https://chainscan-galileo.0g.ai';
+const STORAGE_SCAN_GALILEO_URL = 'https://storagescan-galileo.0g.ai';
 const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as Hex;
 const DEFAULT_FIELD_VALUES: Record<string, string> = {
   conferral_date: '1704067200',
@@ -118,6 +162,131 @@ const DEFAULT_FIELD_VALUES: Record<string, string> = {
 
 function isBytes32(value: string): value is Hex {
   return BYTES32_PATTERN.test(value);
+}
+
+function isSignature(value: string): value is Hex {
+  return SIGNATURE_PATTERN.test(value);
+}
+
+function readReviewReceiptPayload(value: unknown): ReviewReceiptPayload | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const receipt = {
+    trustId: typeof record.trustId === 'string' ? record.trustId : undefined,
+    beneficiary: typeof record.beneficiary === 'string' ? record.beneficiary : undefined,
+    attestationUid: typeof record.attestationUid === 'string' ? record.attestationUid : undefined,
+    templateId: typeof record.templateId === 'string' ? record.templateId : undefined,
+    receiptRoot: typeof record.receiptRoot === 'string' ? record.receiptRoot : undefined,
+    receiptUri: typeof record.receiptUri === 'string' ? record.receiptUri : undefined,
+    coordinator: typeof record.coordinator === 'string' ? record.coordinator : undefined,
+    verdict: typeof record.verdict === 'number' ? record.verdict : undefined,
+    createdAt: typeof record.createdAt === 'string' ? record.createdAt : undefined,
+    expiresAt: typeof record.expiresAt === 'string' ? record.expiresAt : undefined,
+  };
+
+  if (
+    !receipt.trustId ||
+    !/^\d+$/.test(receipt.trustId) ||
+    !receipt.beneficiary ||
+    !isAddress(receipt.beneficiary) ||
+    !receipt.attestationUid ||
+    !isBytes32(receipt.attestationUid) ||
+    !receipt.templateId ||
+    !isBytes32(receipt.templateId) ||
+    !receipt.receiptRoot ||
+    !isBytes32(receipt.receiptRoot) ||
+    !receipt.receiptUri ||
+    !receipt.coordinator ||
+    !isAddress(receipt.coordinator) ||
+    typeof receipt.verdict !== 'number' ||
+    !Number.isInteger(receipt.verdict) ||
+    !receipt.createdAt ||
+    !/^\d+$/.test(receipt.createdAt) ||
+    !receipt.expiresAt ||
+    !/^\d+$/.test(receipt.expiresAt)
+  ) {
+    return undefined;
+  }
+
+  return receipt as ReviewReceiptPayload;
+}
+
+function parseReviewReceiptJson(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  try {
+    return readReviewReceiptPayload(JSON.parse(trimmed));
+  } catch {
+    return undefined;
+  }
+}
+
+function reviewReceiptJson(receipt: ReviewReceiptPayload | undefined) {
+  return receipt ? JSON.stringify(receipt, null, 2) : '';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function JsonPrimitive({ value }: { value: unknown }) {
+  if (value === null) return <span className="json-null">null</span>;
+  if (typeof value === 'string') return <span className="json-string">&quot;{value}&quot;</span>;
+  if (typeof value === 'number') return <span className="json-number">{value}</span>;
+  if (typeof value === 'boolean') return <span className="json-boolean">{String(value)}</span>;
+  return <span className="json-null">{String(value)}</span>;
+}
+
+function JsonTree({
+  label,
+  value,
+  root = false,
+}: {
+  label?: string;
+  value: unknown;
+  root?: boolean;
+}) {
+  if (Array.isArray(value)) {
+    return (
+      <details className="json-node" open={root || value.length <= 4}>
+        <summary>
+          {label ? <span className="json-key">{label}</span> : null}
+          <span className="json-structure">Array({value.length})</span>
+        </summary>
+        <div className="json-children">
+          {value.map((entry, index) => (
+            <JsonTree key={index} label={String(index)} value={entry} />
+          ))}
+        </div>
+      </details>
+    );
+  }
+
+  if (isRecord(value)) {
+    const entries = Object.entries(value);
+
+    return (
+      <details className="json-node" open={root || entries.length <= 6}>
+        <summary>
+          {label ? <span className="json-key">{label}</span> : null}
+          <span className="json-structure">Object({entries.length})</span>
+        </summary>
+        <div className="json-children">
+          {entries.map(([key, entry]) => (
+            <JsonTree key={key} label={key} value={entry} />
+          ))}
+        </div>
+      </details>
+    );
+  }
+
+  return (
+    <div className="json-leaf">
+      {label ? <span className="json-key">{label}</span> : null}
+      <JsonPrimitive value={value} />
+    </div>
+  );
 }
 
 function readSchemaRecord(value: unknown): SchemaRecord | null {
@@ -268,10 +437,51 @@ function attestationDraftStorageKey(trustId: string) {
   return `${ATTESTATION_DRAFT_STORAGE_PREFIX}:${trustId}`;
 }
 
+function storageScanSubmissionLink(sequence: number) {
+  return `${STORAGE_SCAN_GALILEO_URL}/submission/${sequence}`;
+}
+
 function optionalString(value: unknown, key: string) {
   if (!value || typeof value !== 'object') return undefined;
   const field = (value as Record<string, unknown>)[key];
   return typeof field === 'string' && field.length > 0 ? field : undefined;
+}
+
+function readReviewReceiptSource(value: unknown) {
+  const source = optionalString(value, 'reviewReceiptSource');
+  return source === 'keeperhub-workflow' ||
+    source === 'trigger-api-receipt-service' ||
+    source === 'receipt-service-keeperhub-webhook'
+    ? source
+    : undefined;
+}
+
+function readReceiptStoragePayload(value: unknown) {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const rootHash = optionalString(record, 'rootHash');
+  const uri = optionalString(record, 'uri');
+  const byteSize = record.byteSize;
+  const attempts = record.attempts;
+
+  if (
+    !rootHash ||
+    !isBytes32(rootHash) ||
+    !uri ||
+    typeof byteSize !== 'number' ||
+    typeof attempts !== 'number'
+  ) {
+    return undefined;
+  }
+
+  return {
+    rootHash,
+    uri,
+    byteSize,
+    attempts,
+    txHash: optionalString(record, 'txHash'),
+    txSeq: typeof record.txSeq === 'number' ? record.txSeq : undefined,
+  } satisfies ReviewReceiptStoragePayload;
 }
 
 function readStoredKeeperHubExecution(value: unknown, trustId: string) {
@@ -286,6 +496,11 @@ function readStoredKeeperHubExecution(value: unknown, trustId: string) {
     version: 1,
     trustId,
     attestationUid: optionalString(record, 'attestationUid'),
+    reviewReceipt: readReviewReceiptPayload(record.reviewReceipt),
+    coordinatorSignature: optionalString(record, 'coordinatorSignature'),
+    reviewReceiptSource: readReviewReceiptSource(record),
+    receiptStorage: readReceiptStoragePayload(record.receiptStorage),
+    keeperHubExecutionError: optionalString(record, 'keeperHubExecutionError'),
     executionId: optionalString(record, 'executionId'),
     runId: optionalString(record, 'runId'),
     status: optionalString(record, 'status'),
@@ -419,6 +634,164 @@ function formatLocalSavedAt(value: string) {
   return formatKeeperHubSavedAt(value);
 }
 
+function shortValue(value?: string) {
+  if (!value) return '-';
+  if (value.length <= 20) return value;
+  return `${value.slice(0, 12)}...${value.slice(-6)}`;
+}
+
+function recordString(value: Record<string, unknown> | undefined, key: string) {
+  const field = value?.[key];
+  return typeof field === 'string' && field.trim() ? field.trim() : undefined;
+}
+
+function recordBoolean(value: Record<string, unknown> | undefined, key: string) {
+  const field = value?.[key];
+  return typeof field === 'boolean' ? field : undefined;
+}
+
+function readStringArrayValue(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function readSwarmIdentity(value: unknown, index: number): SwarmIdentity | null {
+  if (!isRecord(value)) return null;
+
+  const role = recordString(value, 'role') ?? `agent-${index + 1}`;
+  const identity = {
+    role,
+    agenticId: recordString(value, 'agenticId'),
+    chain: recordString(value, 'chain'),
+    contract: recordString(value, 'contract'),
+    tokenId: recordString(value, 'tokenId'),
+    metadataHash: recordString(value, 'metadataHash'),
+    authorizedExecutor: recordString(value, 'authorizedExecutor'),
+  };
+  const hasIdentityData = Boolean(
+    identity.agenticId ||
+      identity.chain ||
+      identity.contract ||
+      identity.tokenId ||
+      identity.metadataHash ||
+      identity.authorizedExecutor,
+  );
+
+  return hasIdentityData ? identity : null;
+}
+
+function readSwarmVote(value: unknown, index: number): SwarmVote | null {
+  if (!isRecord(value)) return null;
+
+  const raw = isRecord(value.raw) ? value.raw : undefined;
+  return {
+    role: recordString(value, 'role') ?? `agent-${index + 1}`,
+    decision: recordString(value, 'decision') ?? 'unknown',
+    agenticId: recordString(value, 'agenticId'),
+    chain: recordString(value, 'chain'),
+    contract: recordString(value, 'contract'),
+    tokenId: recordString(value, 'tokenId'),
+    metadataHash: recordString(value, 'metadataHash'),
+    authorizedExecutor: recordString(value, 'authorizedExecutor'),
+    responseId: recordString(raw, 'responseId'),
+    responseKey: recordString(raw, 'responseKey'),
+    rationale: readStringArrayValue(value.rationale),
+    riskFlags: readStringArrayValue(value.riskFlags),
+  };
+}
+
+function identityKey(identity: SwarmIdentity) {
+  return [identity.role, identity.agenticId, identity.contract, identity.tokenId]
+    .filter(Boolean)
+    .join(':');
+}
+
+function mergeSwarmIdentities(primary: SwarmIdentity[], fallback: SwarmIdentity[]) {
+  const seen = new Set<string>();
+  const merged: SwarmIdentity[] = [];
+
+  for (const identity of [...primary, ...fallback]) {
+    const key = identityKey(identity);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(identity);
+  }
+
+  return merged;
+}
+
+function parseAgenticId(value?: string) {
+  if (!value) return {};
+
+  const match = /^([^:]+):(0x[0-9a-fA-F]{40})\/([^/]+)$/.exec(value);
+  if (!match) return {};
+
+  return {
+    chain: match[1],
+    contract: match[2],
+    tokenId: match[3],
+  };
+}
+
+function agenticContract(identity: SwarmIdentity) {
+  const parsed = parseAgenticId(identity.agenticId);
+  return identity.contract ?? parsed.contract;
+}
+
+function agenticTokenId(identity: SwarmIdentity) {
+  const parsed = parseAgenticId(identity.agenticId);
+  return identity.tokenId ?? parsed.tokenId;
+}
+
+function agenticChain(identity: SwarmIdentity) {
+  const parsed = parseAgenticId(identity.agenticId);
+  return identity.chain ?? parsed.chain;
+}
+
+function zeroGAddressLink(address?: string) {
+  return address && isAddress(address) ? `${ZERO_G_CHAINSCAN_GALILEO_URL}/address/${address}` : undefined;
+}
+
+function readSwarmSnapshot(value: unknown): SwarmSnapshot | null {
+  if (!isRecord(value)) return null;
+
+  const swarm = isRecord(value.swarm) ? value.swarm : undefined;
+  const reviewCouncil = isRecord(value.reviewCouncil) ? value.reviewCouncil : undefined;
+  const aggregate = isRecord(value.aggregate) ? value.aggregate : undefined;
+  const rounds = Array.isArray(swarm?.rounds) ? swarm.rounds : [];
+  const firstRound = isRecord(rounds[0]) ? rounds[0] : undefined;
+  const roundAggregate = isRecord(firstRound?.aggregate) ? firstRound.aggregate : aggregate;
+  const rawIdentities = Array.isArray(reviewCouncil?.agenticIds) ? reviewCouncil.agenticIds : [];
+  const identities = rawIdentities
+    .map((identity, index) => readSwarmIdentity(identity, index))
+    .filter((identity): identity is SwarmIdentity => identity !== null);
+  const rawVotes = Array.isArray(firstRound?.votes)
+    ? firstRound.votes
+    : Array.isArray(value.votes)
+      ? value.votes
+      : [];
+  const votes = rawVotes
+    .map((vote, index) => readSwarmVote(vote, index))
+    .filter((vote): vote is SwarmVote => vote !== null);
+
+  if (!swarm && votes.length === 0) return null;
+
+  return {
+    name: recordString(swarm, 'name') ?? 'Brew Release Council',
+    coordinationMode: recordString(swarm, 'coordinationMode') ?? 'parallel-independent-review',
+    quorumRule:
+      recordString(swarm, 'quorumRule') ??
+      recordString(roundAggregate, 'rule') ??
+      'evidence approve + policy approve + risk no-veto',
+    sharedContextDigest: recordString(swarm, 'sharedContextDigest'),
+    verdict: recordString(roundAggregate, 'verdict'),
+    releaseReady: recordBoolean(roundAggregate, 'releaseReady'),
+    divergences: readStringArrayValue(firstRound?.divergences ?? roundAggregate?.divergences),
+    identities: mergeSwarmIdentities(identities, votes),
+    votes,
+  };
+}
+
 export function TrustDetail({ trustId }: { trustId: string }) {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -426,9 +799,14 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const queryClient = useQueryClient();
+  const receiptArtifactSectionRef = useRef<HTMLElement | null>(null);
 
   const [attestationUid, setAttestationUid] = useState('');
   const [attestationUidEdited, setAttestationUidEdited] = useState(false);
+  const [reviewReceiptInput, setReviewReceiptInput] = useState('');
+  const [reviewReceiptEdited, setReviewReceiptEdited] = useState(false);
+  const [coordinatorSignature, setCoordinatorSignature] = useState('');
+  const [coordinatorSignatureEdited, setCoordinatorSignatureEdited] = useState(false);
   const [attestationFieldValues, setAttestationFieldValues] = useState<Record<string, string>>({});
   const [attestationHash, setAttestationHash] = useState<string | null>(null);
   const [createdAttestationUid, setCreatedAttestationUid] = useState<string | null>(null);
@@ -438,6 +816,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const [keeperHubTriggerState, setKeeperHubTriggerState] =
     useState<KeeperHubTriggerState>('idle');
   const [keeperHubTriggerError, setKeeperHubTriggerError] = useState<string | null>(null);
+  const [receiptArtifactOpen, setReceiptArtifactOpen] = useState(false);
   const [step, setStep] = useState<ActionStep>('idle');
   const [activeAction, setActiveAction] = useState<ActiveAction | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -450,6 +829,16 @@ export function TrustDetail({ trustId }: { trustId: string }) {
 
     return () => window.clearInterval(interval);
   }, []);
+
+  function openReceiptArtifactViewer() {
+    setReceiptArtifactOpen(true);
+    window.requestAnimationFrame(() => {
+      receiptArtifactSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  }
 
   const getStoredKeeperHubExecutionSnapshot = useCallback(
     () => storedKeeperHubExecutionSnapshot(trustId),
@@ -517,6 +906,29 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     enabled: Boolean(trust),
     refetchOnWindowFocus: false,
   });
+  const receiptStorageRoot =
+    trust?.reviewReceiptRoot ?? storedKeeperHubExecution?.receiptStorage?.rootHash;
+  const receiptStorageUri =
+    trust?.reviewReceiptUri ?? storedKeeperHubExecution?.receiptStorage?.uri;
+  const receiptArtifactQuery = useQuery({
+    queryKey: ['review-receipt-artifact', receiptStorageRoot, receiptStorageUri],
+    queryFn: () =>
+      fetchReviewReceiptArtifact({
+        rootHash: receiptStorageRoot,
+        uri: receiptStorageUri,
+      }),
+    enabled: Boolean(receiptStorageRoot || receiptStorageUri),
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+  });
+  const receiptArtifactTxSeq =
+    typeof receiptArtifactQuery.data?.txSeq === 'number'
+      ? receiptArtifactQuery.data.txSeq
+      : undefined;
+  const receiptSwarm = useMemo(
+    () => readSwarmSnapshot(receiptArtifactQuery.data?.artifact),
+    [receiptArtifactQuery.data?.artifact],
+  );
 
   const tokenAddress = trust && isAddress(trust.token) ? (trust.token as Address) : undefined;
   const beneficiaryAddress =
@@ -528,13 +940,13 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             address: tokenAddress,
             abi: erc20Abi,
             functionName: 'symbol',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
           },
           {
             address: tokenAddress,
             abi: erc20Abi,
             functionName: 'decimals',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
           },
         ]
       : [],
@@ -550,7 +962,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             address: EAS_SCHEMA_REGISTRY_ADDRESS,
             abi: schemaRegistryAbi,
             functionName: 'getSchema',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
             args: [schemaUid],
           },
         ]
@@ -566,7 +978,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             address: BREW_VERIFIER_ADDRESS,
             abi: attestationVerifierAbi,
             functionName: 'isIssuerAllowed',
-            chainId: sepolia.id,
+            chainId: BREW_CHAIN.id,
             args: [trust.templateId, address],
           },
         ]
@@ -598,7 +1010,17 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const displayedAttestationUid = attestationUidEdited ? attestationUid : defaultAttestationUid;
   const trimmedAttestationUid = displayedAttestationUid.trim();
   const attestationReady = isBytes32(trimmedAttestationUid);
-  const needsNetworkSwitch = isConnected && chainId !== sepolia.id;
+  const defaultReviewReceiptInput = reviewReceiptJson(storedKeeperHubExecution?.reviewReceipt);
+  const displayedReviewReceiptInput = reviewReceiptEdited ? reviewReceiptInput : defaultReviewReceiptInput;
+  const reviewReceipt = parseReviewReceiptJson(displayedReviewReceiptInput);
+  const reviewReceiptReady = Boolean(reviewReceipt);
+  const defaultCoordinatorSignature = storedKeeperHubExecution?.coordinatorSignature ?? '';
+  const displayedCoordinatorSignature = coordinatorSignatureEdited
+    ? coordinatorSignature
+    : defaultCoordinatorSignature;
+  const trimmedCoordinatorSignature = displayedCoordinatorSignature.trim();
+  const coordinatorSignatureReady = isSignature(trimmedCoordinatorSignature);
+  const needsNetworkSwitch = isConnected && chainId !== BREW_CHAIN.id;
   const deadlineSeconds = readDeadlineSeconds(trust?.deadline);
   const isSponsor = isSameAddress(trust?.sponsor ?? '', address);
   const isBeneficiary = isSameAddress(trust?.beneficiary ?? '', address);
@@ -617,6 +1039,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     Boolean(publicClient) &&
     Boolean(beneficiaryAddress) &&
     attestationReady &&
+    reviewReceiptReady &&
+    coordinatorSignatureReady &&
     !actionBusy &&
     !(activeAction === 'release' && step === 'confirmed');
   const canAttest =
@@ -648,6 +1072,11 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     keeperHubRunId ?? (storedKeeperHubExecution ? keeperHubRunLabel(storedKeeperHubExecution) : null);
   const hasKeeperHubTrigger =
     keeperHubTriggerState === 'submitted' || Boolean(storedKeeperHubExecution);
+  const hasReviewReceipt =
+    Boolean(receiptStorageRoot) ||
+    Boolean(receiptStorageUri) ||
+    Boolean(trust?.reviewCoordinator) ||
+    Boolean(trust?.reviewedTx);
 
   function updateAttestationUid(value: string) {
     setAttestationUid(value);
@@ -675,6 +1104,24 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     }
   }
 
+  function updateReviewReceiptInput(value: string) {
+    setReviewReceiptInput(value);
+    setReviewReceiptEdited(true);
+    setStep('idle');
+    setActiveAction(null);
+    setReleaseHash(null);
+    setErrorMessage(null);
+  }
+
+  function updateCoordinatorSignature(value: string) {
+    setCoordinatorSignature(value);
+    setCoordinatorSignatureEdited(true);
+    setStep('idle');
+    setActiveAction(null);
+    setReleaseHash(null);
+    setErrorMessage(null);
+  }
+
   async function issueAttestation() {
     if (!trust || !beneficiaryAddress || !publicClient || !schemaUid || !isBytes32(schemaUid)) {
       return;
@@ -687,9 +1134,9 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     setActiveAction('attest');
 
     try {
-      if (chainId !== sepolia.id) {
+      if (chainId !== BREW_CHAIN.id) {
         setStep('switching');
-        await switchChainAsync({ chainId: sepolia.id });
+        await switchChainAsync({ chainId: BREW_CHAIN.id });
       }
 
       const encodedData = encodeAttestationData(schemaFields, attestationFieldValues);
@@ -699,7 +1146,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         address: EAS_ADDRESS,
         abi: easAbi,
         functionName: 'attest',
-        chainId: sepolia.id,
+        chainId: BREW_CHAIN.id,
         args: [
           {
             schema: schemaUid,
@@ -742,7 +1189,14 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   }
 
   async function verifyAndRelease() {
-    if (!trust || !beneficiaryAddress || !isBytes32(trimmedAttestationUid) || !publicClient) {
+    if (
+      !trust ||
+      !beneficiaryAddress ||
+      !isBytes32(trimmedAttestationUid) ||
+      !reviewReceipt ||
+      !coordinatorSignatureReady ||
+      !publicClient
+    ) {
       return;
     }
 
@@ -753,18 +1207,28 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     setActiveAction('release');
 
     try {
-      if (chainId !== sepolia.id) {
+      if (chainId !== BREW_CHAIN.id) {
         setStep('switching');
-        await switchChainAsync({ chainId: sepolia.id });
+        await switchChainAsync({ chainId: BREW_CHAIN.id });
       }
 
       setStep('verifying');
       const nextReleaseHash = await writeContractAsync({
         address: BREW_VERIFIER_ADDRESS,
         abi: attestationVerifierAbi,
-        functionName: 'verifyAndRelease',
-        chainId: sepolia.id,
-        args: [BigInt(trust.trustId), beneficiaryAddress, trimmedAttestationUid],
+        functionName: 'verifyAndReleaseWithReceiptFields',
+        chainId: BREW_CHAIN.id,
+        args: [
+          BigInt(trust.trustId),
+          beneficiaryAddress,
+          trimmedAttestationUid,
+          reviewReceipt.receiptRoot as Hex,
+          reviewReceipt.receiptUri,
+          reviewReceipt.coordinator as Address,
+          BigInt(reviewReceipt.createdAt),
+          BigInt(reviewReceipt.expiresAt),
+          trimmedCoordinatorSignature as Hex,
+        ],
       });
       setReleaseHash(nextReleaseHash);
       await publicClient.waitForTransactionReceipt({ hash: nextReleaseHash });
@@ -790,25 +1254,52 @@ export function TrustDetail({ trustId }: { trustId: string }) {
       const result = await triggerKeeperHubRelease({
         trustId: trust.trustId,
         attestationUid: trimmedAttestationUid,
+        beneficiary: trust.beneficiary,
+        escrowAddress: BREW_ESCROW_ADDRESS,
+        verifierAddress: BREW_VERIFIER_ADDRESS,
+        templateId: trust.templateId,
+        schemaUid,
+        token: trust.token,
+        amount: trust.amount,
+        deadline: trust.deadline,
+        released: trust.status === 'RELEASED',
+        refunded: trust.status === 'REFUNDED',
+        executeRelease: true,
       });
 
       if (!result.configured) {
         throw new Error(`KeeperHub trigger is not configured: ${result.missing.join(', ')}`);
+      }
+      if (!result.reviewReceipt || !result.coordinatorSignature) {
+        throw new Error(
+          result.receiptError ??
+            'KeeperHub trigger completed, but no signed review receipt was generated.',
+        );
       }
 
       const storedExecution = {
         version: 1,
         trustId: trust.trustId,
         attestationUid: trimmedAttestationUid,
+        reviewReceipt: result.reviewReceipt,
+        coordinatorSignature: result.coordinatorSignature,
+        reviewReceiptSource: result.reviewReceiptSource,
+        receiptStorage: result.receiptStorage,
+        keeperHubExecutionError: result.keeperHubExecutionError,
         executionId: result.executionId,
         runId: result.runId,
-        status: result.status ?? 'submitted',
+        status: result.keeperHubExecutionError ? 'blocked' : result.status ?? 'submitted',
         savedAt: new Date().toISOString(),
       } satisfies StoredKeeperHubExecution;
 
       saveStoredKeeperHubExecution(storedExecution);
       setKeeperHubRunId(keeperHubRunLabel(storedExecution));
-      setKeeperHubTriggerState('submitted');
+      setKeeperHubTriggerState(result.keeperHubExecutionError ? 'error' : 'submitted');
+      setKeeperHubTriggerError(
+        result.keeperHubExecutionError
+          ? `Review receipt generated, but KeeperHub release failed: ${result.keeperHubExecutionError}`
+          : null,
+      );
       await queryClient.invalidateQueries({ queryKey: ['keeperhub-evidence', trust.trustId] });
       window.setTimeout(() => {
         void queryClient.invalidateQueries({ queryKey: ['keeperhub-evidence', trust.trustId] });
@@ -833,9 +1324,9 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     setActiveAction('refund');
 
     try {
-      if (chainId !== sepolia.id) {
+      if (chainId !== BREW_CHAIN.id) {
         setStep('switching');
-        await switchChainAsync({ chainId: sepolia.id });
+        await switchChainAsync({ chainId: BREW_CHAIN.id });
       }
 
       setStep('refunding');
@@ -843,7 +1334,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         address: BREW_ESCROW_ADDRESS,
         abi: brewEscrowAbi,
         functionName: 'refund',
-        chainId: sepolia.id,
+        chainId: BREW_CHAIN.id,
         args: [BigInt(trust.trustId)],
       });
       setRefundHash(nextRefundHash);
@@ -880,6 +1371,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
       keeperHubQuery.data?.configured === true
         ? keeperHubQuery.data.keeperExecution
         : undefined,
+    receiptStorage: storedKeeperHubExecution?.receiptStorage,
+    storageSubmissionSequence: receiptArtifactTxSeq,
   });
 
   return (
@@ -937,10 +1430,243 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             <span className="data-label">Verified</span>
             <strong>{formatTimestamp(trust.verifiedAt)}</strong>
           </div>
+          <div>
+            <span className="data-label">Review receipt</span>
+            <strong title={receiptStorageRoot ?? undefined}>
+              {receiptStorageRoot ? shortHash(receiptStorageRoot) : '-'}
+            </strong>
+          </div>
+          <div>
+            <span className="data-label">Review coordinator</span>
+            <strong title={trust.reviewCoordinator ?? undefined}>
+              {trust.reviewCoordinator ? shortenAddress(trust.reviewCoordinator) : '-'}
+            </strong>
+          </div>
+          <div>
+            <span className="data-label">Reviewed</span>
+            <strong>{formatTimestamp(trust.reviewedAt)}</strong>
+          </div>
         </div>
       </section>
 
-      <SponsorEvidencePanel evidence={sponsorEvidence} />
+      <SponsorEvidencePanel
+        evidence={sponsorEvidence}
+        onOpenStorageUri={openReceiptArtifactViewer}
+      />
+
+      {hasReviewReceipt ? (
+        <section
+          ref={receiptArtifactSectionRef}
+          className="sponsor-panel"
+          aria-label="Review receipt"
+        >
+          <div className="section-heading">
+            <div>
+              <span className="data-label">Review receipt</span>
+              <h2>0G receipt artifact</h2>
+            </div>
+            <strong>{receiptStorageRoot ? shortHash(receiptStorageRoot) : '-'}</strong>
+          </div>
+
+          <div className="trust-summary">
+            <div>
+              <span className="data-label">Root</span>
+              <strong title={receiptStorageRoot ?? undefined}>
+                {receiptStorageRoot ? shortHash(receiptStorageRoot) : '-'}
+              </strong>
+            </div>
+            <div>
+              <span className="data-label">URI</span>
+              {receiptStorageUri ? (
+                <button
+                  type="button"
+                  className="receipt-uri-button"
+                  title={receiptStorageUri}
+                  onClick={openReceiptArtifactViewer}
+                >
+                  {receiptStorageUri}
+                </button>
+              ) : (
+                <strong>-</strong>
+              )}
+            </div>
+            <div>
+              <span className="data-label">StorageScan</span>
+              {receiptArtifactTxSeq !== undefined ? (
+                <a
+                  className="tx-link"
+                  href={storageScanSubmissionLink(receiptArtifactTxSeq)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open submission {receiptArtifactTxSeq}
+                </a>
+              ) : (
+                <strong>Resolving submission</strong>
+              )}
+            </div>
+            <div>
+              <span className="data-label">Coordinator</span>
+              <strong title={trust.reviewCoordinator ?? undefined}>
+                {trust.reviewCoordinator ? shortenAddress(trust.reviewCoordinator) : '-'}
+              </strong>
+            </div>
+            <div>
+              <span className="data-label">Review tx</span>
+              {trust.reviewedTx ? (
+                <a className="tx-link" href={txLink(trust.reviewedTx)} target="_blank" rel="noreferrer">
+                  {shortHash(trust.reviewedTx)}
+                </a>
+              ) : (
+                <strong>-</strong>
+              )}
+            </div>
+          </div>
+
+          {receiptSwarm ? (
+            <div className="swarm-panel" aria-label="Review swarm round">
+              <div className="swarm-panel-header">
+                <div>
+                  <span className="data-label">Swarm round</span>
+                  <strong>{receiptSwarm.name}</strong>
+                </div>
+                <span className="evidence-mode evidence-mode-live">
+                  {receiptSwarm.coordinationMode}
+                </span>
+              </div>
+
+              <div className="swarm-meta">
+                <div>
+                  <span className="data-label">Quorum</span>
+                  <strong>{receiptSwarm.quorumRule}</strong>
+                </div>
+                <div>
+                  <span className="data-label">Verdict</span>
+                  <strong>
+                    {receiptSwarm.verdict ?? (receiptSwarm.releaseReady ? 'ReleaseRecommended' : '-')}
+                  </strong>
+                </div>
+                <div>
+                  <span className="data-label">Context digest</span>
+                  <strong title={receiptSwarm.sharedContextDigest}>
+                    {shortValue(receiptSwarm.sharedContextDigest)}
+                  </strong>
+                </div>
+              </div>
+
+              {receiptSwarm.identities.length > 0 ? (
+                <div className="agent-identity-panel">
+                  <div className="agent-identity-header">
+                    <span className="data-label">Agent identities</span>
+                    <strong>0G Galileo Agentic IDs</strong>
+                  </div>
+                  <div className="agent-identity-grid">
+                    {receiptSwarm.identities.map((identity) => {
+                      const contract = agenticContract(identity);
+                      const tokenId = agenticTokenId(identity);
+                      const chain = agenticChain(identity);
+                      const contractLink = zeroGAddressLink(contract);
+
+                      return (
+                        <div className="agent-identity-card" key={identityKey(identity)}>
+                          <div className="agent-identity-title">
+                            <span className="data-label">{identity.role}</span>
+                            <strong>{tokenId ? `Token #${tokenId}` : 'Agent token'}</strong>
+                          </div>
+                          <div className="agent-identity-values">
+                            <span>Agentic ID</span>
+                            <strong title={identity.agenticId}>{shortValue(identity.agenticId)}</strong>
+                            <span>Chain</span>
+                            <strong>{chain ?? '-'}</strong>
+                            <span>Contract</span>
+                            {contract && contractLink ? (
+                              <a className="tx-link" href={contractLink} target="_blank" rel="noreferrer">
+                                {shortenAddress(contract)}
+                              </a>
+                            ) : (
+                              <strong>-</strong>
+                            )}
+                            <span>Metadata</span>
+                            <strong title={identity.metadataHash}>
+                              {shortValue(identity.metadataHash)}
+                            </strong>
+                            <span>Executor</span>
+                            <strong title={identity.authorizedExecutor}>
+                              {identity.authorizedExecutor
+                                ? shortenAddress(identity.authorizedExecutor)
+                                : '-'}
+                            </strong>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="swarm-vote-grid">
+                {receiptSwarm.votes.map((vote) => (
+                  <div className="swarm-vote" key={vote.role}>
+                    <div className="swarm-vote-main">
+                      <span className="data-label">{vote.role}</span>
+                      <strong>{vote.decision}</strong>
+                    </div>
+                    <div className="swarm-vote-values">
+                      <span>Agentic ID</span>
+                      <strong title={vote.agenticId}>{shortValue(vote.agenticId)}</strong>
+                      <span>Metadata</span>
+                      <strong title={vote.metadataHash}>{shortValue(vote.metadataHash)}</strong>
+                      <span>0G response</span>
+                      <strong title={vote.responseId ?? vote.responseKey}>
+                        {shortValue(vote.responseId ?? vote.responseKey)}
+                      </strong>
+                    </div>
+                    {vote.rationale[0] ? (
+                      <p className="form-note">{vote.rationale[0]}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              {receiptSwarm.divergences.length > 0 ? (
+                <div className="swarm-divergences">
+                  <span className="data-label">Divergences</span>
+                  {receiptSwarm.divergences.map((divergence) => (
+                    <strong key={divergence}>{divergence}</strong>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={!receiptStorageRoot && !receiptStorageUri}
+            onClick={() => {
+              if (receiptArtifactOpen) {
+                setReceiptArtifactOpen(false);
+              } else {
+                openReceiptArtifactViewer();
+              }
+            }}
+          >
+            {receiptArtifactOpen ? 'Hide receipt JSON' : 'View receipt JSON'}
+          </button>
+
+          {receiptArtifactOpen && receiptArtifactQuery.isFetching ? (
+            <p className="form-note">Loading receipt JSON.</p>
+          ) : null}
+          {receiptArtifactOpen && receiptArtifactQuery.error instanceof Error ? (
+            <p className="data-error">{receiptArtifactQuery.error.message}</p>
+          ) : null}
+          {receiptArtifactOpen && receiptArtifactQuery.data !== undefined ? (
+            <div className="receipt-json" aria-label="Receipt JSON">
+              <JsonTree value={receiptArtifactQuery.data} root />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="sponsor-panel" aria-label="Issue attestation">
         <div className="section-heading">
@@ -1079,11 +1805,30 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                   onChange={(event) => updateAttestationUid(event.target.value)}
                 />
               </label>
+              <label className="wide-field">
+                Review receipt JSON
+                <textarea
+                  autoComplete="off"
+                  placeholder='{"trustId":"0","beneficiary":"0x...","attestationUid":"0x..."}'
+                  rows={7}
+                  value={displayedReviewReceiptInput}
+                  onChange={(event) => updateReviewReceiptInput(event.target.value)}
+                />
+              </label>
+              <label className="wide-field">
+                Coordinator signature
+                <input
+                  autoComplete="off"
+                  placeholder="0x..."
+                  value={displayedCoordinatorSignature}
+                  onChange={(event) => updateCoordinatorSignature(event.target.value)}
+                />
+              </label>
             </div>
 
             <div className="action-row">
               <button className="primary-action" disabled={!canRelease} onClick={verifyAndRelease}>
-                {needsNetworkSwitch ? 'Switch and release' : 'Verify and release'}
+                {needsNetworkSwitch ? 'Switch and manual release' : 'Manual verifier release'}
               </button>
               <button
                 className="secondary-action"
@@ -1091,8 +1836,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                 onClick={triggerKeeperHubWorkflow}
               >
                 {keeperHubTriggerState === 'triggering'
-                  ? 'Triggering KeeperHub'
-                  : 'Run KeeperHub release'}
+                  ? 'Running agent release'
+                  : 'Run agent release'}
               </button>
             </div>
           </>
@@ -1116,8 +1861,8 @@ export function TrustDetail({ trustId }: { trustId: string }) {
               onClick={triggerKeeperHubWorkflow}
             >
               {keeperHubTriggerState === 'triggering'
-                ? 'Triggering KeeperHub'
-                : 'Run KeeperHub release'}
+                ? 'Running agent release'
+                : 'Run agent release'}
             </button>
           </>
         ) : (
@@ -1127,6 +1872,12 @@ export function TrustDetail({ trustId }: { trustId: string }) {
         {!isConnected ? <p className="form-note">Connect a wallet to view release actions.</p> : null}
         {trimmedAttestationUid && !attestationReady ? (
           <p className="form-note">Enter a valid bytes32 attestation UID.</p>
+        ) : null}
+        {displayedReviewReceiptInput.trim() && !reviewReceiptReady ? (
+          <p className="form-note">Enter a valid signed review receipt JSON object.</p>
+        ) : null}
+        {trimmedCoordinatorSignature && !coordinatorSignatureReady ? (
+          <p className="form-note">Enter a valid coordinator signature.</p>
         ) : null}
         {storedAttestationDraft && !trust.attestationUid ? (
           <p className="form-note">
@@ -1145,6 +1896,9 @@ export function TrustDetail({ trustId }: { trustId: string }) {
             <span title={displayedKeeperHubRunId}>{displayedKeeperHubRunId}</span>
             {storedKeeperHubExecution
               ? `, cached locally ${formatKeeperHubSavedAt(storedKeeperHubExecution.savedAt)}`
+              : ''}
+            {storedKeeperHubExecution?.reviewReceiptSource
+              ? `, receipt source ${storedKeeperHubExecution.reviewReceiptSource}`
               : ''}
             .
           </p>

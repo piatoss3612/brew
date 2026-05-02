@@ -1,4 +1,5 @@
 export const BREW_SUBGRAPH_URL =
+  process.env.NEXT_PUBLIC_BREW_SUBGRAPH_URL ??
   'https://api.studio.thegraph.com/query/71401/brew/version/latest';
 
 const BREW_STATUS_QUERY = `
@@ -22,6 +23,11 @@ const BREW_STATUS_QUERY = `
       attestationUid
       verifiedAt
       verifiedTx
+      reviewReceiptRoot
+      reviewReceiptUri
+      reviewCoordinator
+      reviewedAt
+      reviewedTx
     }
     verifierConfigs(first: 1) {
       id
@@ -60,6 +66,11 @@ export type BrewTrust = {
   attestationUid: string | null;
   verifiedAt: string | null;
   verifiedTx: string | null;
+  reviewReceiptRoot: string | null;
+  reviewReceiptUri: string | null;
+  reviewCoordinator: string | null;
+  reviewedAt: string | null;
+  reviewedTx: string | null;
 };
 
 export type BrewTemplate = {

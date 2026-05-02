@@ -124,6 +124,38 @@ contract AttestationVerifierTest is Test {
         assertTrue(verifier.consumed(uid));
     }
 
+    function testVerifyAndReleaseWithReceiptFieldsHappyPath() public {
+        uint256 trustId = _createTrust(TEMPLATE_ID);
+        bytes32 uid = _seedAttestation(
+            issuer, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
+        );
+        IAttestationVerifier.ReviewReceipt memory receipt = _recommendedReceipt(trustId, beneficiary, uid);
+        bytes memory signature = _signReceipt(receipt);
+
+        vm.expectEmit(true, true, true, true, address(verifier));
+        emit IAttestationVerifier.Verified(trustId, uid, beneficiary);
+        vm.expectEmit(true, true, true, false, address(verifier));
+        emit IAttestationVerifier.ReviewReceiptAccepted(
+            trustId, uid, coordinator, receipt.receiptRoot, receipt.receiptUri
+        );
+
+        verifier.verifyAndReleaseWithReceiptFields(
+            trustId,
+            beneficiary,
+            uid,
+            receipt.receiptRoot,
+            receipt.receiptUri,
+            receipt.coordinator,
+            receipt.createdAt,
+            receipt.expiresAt,
+            signature
+        );
+
+        assertEq(token.balanceOf(beneficiary), AMOUNT);
+        assertTrue(escrow.isReleased(trustId, beneficiary));
+        assertTrue(verifier.consumed(uid));
+    }
+
     function testVerifyAndReleaseRejectsRejectedReceipt() public {
         uint256 trustId = _createTrust(TEMPLATE_ID);
         bytes32 uid = _seedAttestation(

@@ -1,6 +1,14 @@
 import { shortHash, shortenAddress, txLink } from '../../../format';
 import type { EvidenceMode, SponsorEvidence } from '../../../sponsor-evidence';
 
+const STORAGE_SCAN_GALILEO_URL = 'https://storagescan-galileo.0g.ai';
+
+function storageScanSubmissionLink(sequence: number | undefined) {
+  return typeof sequence === 'number'
+    ? `${STORAGE_SCAN_GALILEO_URL}/submission/${sequence}`
+    : STORAGE_SCAN_GALILEO_URL;
+}
+
 function formatMode(mode: EvidenceMode) {
   if (mode === 'live') return 'Live';
   if (mode === 'simulated') return 'Simulated';
@@ -17,13 +25,16 @@ function EvidenceValue({
   value,
   title,
   link,
+  onOpenStorageUri,
 }: {
   label: string;
   value?: string;
   title?: string;
   link?: string;
+  onOpenStorageUri?: (uri: string) => void;
 }) {
   const displayValue = value ?? '-';
+  const isStorageUri = value?.startsWith('0g://storage/') === true;
 
   return (
     <div>
@@ -32,6 +43,15 @@ function EvidenceValue({
         <a className="tx-link" href={link} target="_blank" rel="noreferrer" title={title ?? value}>
           {displayValue}
         </a>
+      ) : value && isStorageUri && onOpenStorageUri ? (
+        <button
+          type="button"
+          className="receipt-uri-button"
+          title={title ?? value}
+          onClick={() => onOpenStorageUri(value)}
+        >
+          {displayValue}
+        </button>
       ) : (
         <strong title={title ?? value}>{displayValue}</strong>
       )}
@@ -47,7 +67,15 @@ function shortMaybeHash(value?: string) {
   return value && value.startsWith('0x') && value.length > 18 ? shortHash(value) : value;
 }
 
-export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }) {
+export function SponsorEvidencePanel({
+  evidence,
+  onOpenStorageUri,
+}: {
+  evidence: SponsorEvidence;
+  onOpenStorageUri?: (uri: string) => void;
+}) {
+  const hasStorageSubmission = typeof evidence.storage.submissionSequence === 'number';
+
   return (
     <section className="sponsor-panel" aria-label="Sponsor evidence">
       <div className="section-heading">
@@ -122,11 +150,39 @@ export function SponsorEvidencePanel({ evidence }: { evidence: SponsorEvidence }
           </div>
           <div className="evidence-values">
             <EvidenceValue label="Provider" value={evidence.storage.provider} />
-            <EvidenceValue label="Manifest" value={evidence.storage.manifestUri} />
             <EvidenceValue
-              label="Digest"
-              value={shortMaybeHash(evidence.receipt.receiptDigest)}
-              title={evidence.receipt.receiptDigest}
+              label="Manifest"
+              value={evidence.storage.manifestUri}
+              onOpenStorageUri={onOpenStorageUri}
+            />
+            <EvidenceValue
+              label="StorageScan"
+              value={
+                hasStorageSubmission
+                  ? `Submission ${evidence.storage.submissionSequence}`
+                  : 'Resolving submission'
+              }
+              link={
+                hasStorageSubmission
+                  ? storageScanSubmissionLink(evidence.storage.submissionSequence)
+                  : undefined
+              }
+            />
+            <EvidenceValue
+              label="Root"
+              value={shortMaybeHash(evidence.storage.metadataRoot)}
+              title={evidence.storage.metadataRoot}
+            />
+            <EvidenceValue
+              label="Coordinator"
+              value={shortenMaybeAddress(evidence.storage.coordinator)}
+              title={evidence.storage.coordinator}
+            />
+            <EvidenceValue
+              label="Review tx"
+              value={shortMaybeHash(evidence.storage.reviewedTx)}
+              title={evidence.storage.reviewedTx}
+              link={evidence.storage.reviewedTx ? txLink(evidence.storage.reviewedTx) : undefined}
             />
             <EvidenceValue label="Receipt" value={evidence.storage.receiptKey} />
             <EvidenceValue label="Run status" value={evidence.receipt.keeperHubStatus} />

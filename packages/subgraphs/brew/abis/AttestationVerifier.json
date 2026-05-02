@@ -451,6 +451,59 @@
     "stateMutability": "nonpayable"
   },
   {
+    "type": "function",
+    "name": "verifyAndReleaseWithReceiptFields",
+    "inputs": [
+      {
+        "name": "trustId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "attestationUid",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "receiptRoot",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "receiptUri",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "coordinator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "createdAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "expiresAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "coordinatorSignature",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
     "type": "event",
     "name": "EIP712DomainChanged",
     "inputs": [],

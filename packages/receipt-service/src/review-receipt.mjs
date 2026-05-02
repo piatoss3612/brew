@@ -5,6 +5,8 @@ import { uploadJsonArtifactToZeroGStorage } from './zero-g-storage.mjs';
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const PRIVATE_KEY_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+const SWARM_NAME = 'Brew Release Council';
+const SWARM_COORDINATION_MODE = 'parallel-independent-review';
 
 const REVIEW_RECEIPT_TYPES = {
   ReviewReceipt: [
@@ -74,6 +76,9 @@ export async function generateReviewReceipt(input, config) {
     createdAt,
     expiresAt,
   });
+
+  assertReleaseRecommended(artifact.aggregate);
+
   const receiptStorage = await uploadJsonArtifactToZeroGStorage({
     artifact,
     privateKey: config.storage.privateKey,
@@ -126,6 +131,7 @@ export async function generateReviewReceipt(input, config) {
 export function buildReceiptArtifact(input) {
   const votes = normalizeVotes(input.votes, input.review);
   const aggregate = normalizeAggregate(input.aggregate, votes);
+  const agenticIds = normalizeAgenticIds(input.agenticIds);
 
   return {
     kind: 'BrewSwarmReviewBundle',
@@ -139,8 +145,14 @@ export function buildReceiptArtifact(input) {
     },
     reviewCouncil: {
       coordinator: input.coordinator,
-      agenticIds: normalizeAgenticIds(input.agenticIds),
+      agenticIds,
     },
+    swarm: buildSwarmBundle({
+      input,
+      votes,
+      aggregate,
+      agenticIds,
+    }),
     votes,
     aggregate,
     receipt: {
@@ -179,6 +191,16 @@ export function normalizeReviewReceiptInput(body) {
     beneficiary: stringField(body, 'beneficiary'),
     attestationUid: stringField(body, 'attestationUid'),
     templateId: stringField(body, 'templateId'),
+    escrowAddress: optionalStringField(body, 'escrowAddress'),
+    verifierAddress: optionalStringField(body, 'verifierAddress'),
+    schemaUid: optionalStringField(body, 'schemaUid'),
+    token: optionalStringField(body, 'token'),
+    amount: optionalStringField(body, 'amount'),
+    deadline: optionalStringField(body, 'deadline'),
+    released: booleanField(body, 'released'),
+    refunded: booleanField(body, 'refunded'),
+    executeRelease: booleanField(body, 'executeRelease') === true,
+    runReviewSwarm: booleanField(body, 'runReviewSwarm') === true,
     source: stringField(body, 'source') || 'receipt-service',
     review: body && typeof body === 'object' ? body.review : undefined,
     agenticIds: arrayField(body, 'agenticIds'),
@@ -249,6 +271,11 @@ function normalizeVotes(votes, legacyReview) {
         withoutUndefined({
           role: stringField(vote, 'role') || `agent-${index + 1}`,
           agenticId: optionalStringField(vote, 'agenticId'),
+          chain: optionalStringField(vote, 'chain'),
+          contract: optionalStringField(vote, 'contract'),
+          tokenId: optionalStringField(vote, 'tokenId'),
+          metadataHash: optionalStringField(vote, 'metadataHash'),
+          authorizedExecutor: optionalStringField(vote, 'authorizedExecutor'),
           decision: stringField(vote, 'decision') || 'unknown',
           rationale: stringArrayField(vote, 'rationale'),
           riskFlags: stringArrayField(vote, 'riskFlags'),
@@ -264,6 +291,11 @@ function normalizeVotes(votes, legacyReview) {
       {
         role: stringField(legacyReview, 'role') || 'operations',
         agenticId: optionalStringField(legacyReview, 'agenticId'),
+        chain: optionalStringField(legacyReview, 'chain'),
+        contract: optionalStringField(legacyReview, 'contract'),
+        tokenId: optionalStringField(legacyReview, 'tokenId'),
+        metadataHash: optionalStringField(legacyReview, 'metadataHash'),
+        authorizedExecutor: optionalStringField(legacyReview, 'authorizedExecutor'),
         decision: stringField(legacyReview, 'decision') || 'unknown',
         rationale: stringArrayField(legacyReview, 'rationale'),
         riskFlags: stringArrayField(legacyReview, 'riskFlags'),
@@ -284,7 +316,56 @@ function normalizeAggregate(value, votes) {
     verdict,
     releaseReady: booleanField(value, 'releaseReady') ?? verdict === 'ReleaseRecommended',
     rationale: stringArrayField(value, 'rationale'),
+    divergences: stringArrayField(value, 'divergences'),
   };
+}
+
+function buildSwarmBundle({ input, votes, aggregate, agenticIds }) {
+  const inputSwarm = objectField(input, 'swarm');
+  const roles = uniqueStrings([
+    ...votes.map((vote) => vote.role),
+    ...agenticIds.map((identity) => identity.role),
+  ]);
+  const sharedContextDigest =
+    optionalStringField(inputSwarm, 'sharedContextDigest') ??
+    digestJson({
+      trustId: input.trustId,
+      beneficiary: input.beneficiary,
+      attestationUid: input.attestationUid,
+      templateId: input.templateId,
+      token: optionalStringField(input, 'token'),
+      amount: optionalStringField(input, 'amount'),
+      deadline: optionalStringField(input, 'deadline'),
+      released: booleanField(input, 'released'),
+      refunded: booleanField(input, 'refunded'),
+      escrowAddress: optionalStringField(input, 'escrowAddress'),
+      verifierAddress: optionalStringField(input, 'verifierAddress'),
+      schemaUid: optionalStringField(input, 'schemaUid'),
+    });
+
+  return {
+    name: stringField(inputSwarm, 'name') || SWARM_NAME,
+    coordinationMode:
+      stringField(inputSwarm, 'coordinationMode') || SWARM_COORDINATION_MODE,
+    quorumRule: aggregate.rule,
+    sharedContextDigest,
+    roles,
+    rounds: [
+      {
+        round: 1,
+        mode: stringField(inputSwarm, 'coordinationMode') || SWARM_COORDINATION_MODE,
+        votes,
+        aggregate,
+        divergences: aggregate.divergences,
+      },
+    ],
+  };
+}
+
+function assertReleaseRecommended(aggregate) {
+  if (aggregate.verdict !== 'ReleaseRecommended' || aggregate.releaseReady !== true) {
+    throw new Error('Review receipt cannot be signed unless the review aggregate is release-ready');
+  }
 }
 
 function inferredVerdict(votes) {
@@ -297,6 +378,25 @@ function inferredVerdict(votes) {
   if (hasBlock) return 'Rejected';
 
   return 'ReleaseRecommended';
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter((value) => typeof value === 'string' && value.trim()))];
+}
+
+function digestJson(value) {
+  return ethers.keccak256(ethers.toUtf8Bytes(stableStringify(withoutUndefined(value))));
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function withoutUndefined(value) {

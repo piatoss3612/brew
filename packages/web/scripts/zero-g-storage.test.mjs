@@ -5,6 +5,7 @@ import {
   buildReceiptStorageArtifact,
   formatZeroGStorageUri,
   parseZeroGStorageRoot,
+  readUploadTxSeq,
   serializeJsonArtifact,
 } from '../src/zero-g-storage.js';
 
@@ -57,4 +58,11 @@ test('serializeJsonArtifact is deterministic for object key order', () => {
     serializeJsonArtifact({ b: 2, a: { d: 4, c: 3 } }),
     serializeJsonArtifact({ a: { c: 3, d: 4 }, b: 2 }),
   );
+});
+
+test('readUploadTxSeq extracts the StorageScan submission sequence', () => {
+  assert.equal(readUploadTxSeq({ txSeq: 42 }), 42);
+  assert.equal(readUploadTxSeq({ txSeqs: [43] }), 43);
+  assert.equal(readUploadTxSeq({ txSeq: '44' }), 44);
+  assert.equal(readUploadTxSeq({ txSeq: '' }), undefined);
 });

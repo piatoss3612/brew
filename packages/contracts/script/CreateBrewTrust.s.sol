@@ -8,7 +8,7 @@ import {BrewEscrow} from "../src/BrewEscrow.sol";
 import {IBrewEscrow} from "../src/interfaces/IBrewEscrow.sol";
 import {BrewConfig} from "./BrewConfig.sol";
 
-/// @notice Creates one real Sepolia trust for subgraph and UI smoke testing.
+/// @notice Creates one real Base Sepolia trust for subgraph and UI smoke testing.
 contract CreateBrewTrust is Script {
     uint256 internal constant AMOUNT = 10 * 1e6;
     uint64 internal constant DEADLINE = 0;
