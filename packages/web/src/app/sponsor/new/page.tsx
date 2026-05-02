@@ -15,6 +15,12 @@ export default function NewSponsorTrustPage() {
           <Link className="secondary-link" href="/app">
             Overview
           </Link>
+          <Link className="secondary-link" href="/workspace">
+            Your workspace
+          </Link>
+          <Link className="secondary-link" href="/workflows">
+            Workflows
+          </Link>
           <ConnectWalletButton />
         </div>
       </header>

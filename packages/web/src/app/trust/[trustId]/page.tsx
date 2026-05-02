@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
-import { BrewMark } from '../../brew-mark';
 import { ConnectWalletButton } from '../../connect-wallet-button';
+import { WorkspaceSidebar } from '../../workspace-sidebar';
 import { TrustDetail } from './trust-detail';
 
 type TrustPageProps = {
@@ -15,29 +15,13 @@ export default async function TrustPage({ params }: TrustPageProps) {
 
   return (
     <main className="workspace-shell">
-      <aside className="workspace-sidebar" aria-label="Brew workspace navigation">
-        <Link className="sidebar-brand" href="/app">
-          <span className="brand-mark" aria-hidden="true">
-            <BrewMark />
-          </span>
-          <strong>Brew</strong>
-        </Link>
-        <nav>
-          <Link className="sidebar-link" href="/app">
-            Overview
-          </Link>
-          <Link className="sidebar-link" href="/sponsor/new">
-            New trust
-          </Link>
-          <Link className="sidebar-link sidebar-link-active" href={`/trust/${trustId}`}>
-            Trust #{trustId}
-          </Link>
-        </nav>
-        <div className="sidebar-status">
-          <span className="data-label">Detail view</span>
-          <strong>Release control room</strong>
-        </div>
-      </aside>
+      <WorkspaceSidebar
+        active="trust-detail"
+        detailHref={`/trust/${trustId}`}
+        detailLabel={`Trust #${trustId}`}
+        statusLabel="Detail view"
+        statusValue="Release control room"
+      />
 
       <section className="workspace-main">
         <header className="top-bar workspace-top">
