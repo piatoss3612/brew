@@ -103,11 +103,17 @@ type SchemaField = {
   type: string;
   name: string;
 };
-type SwarmVote = {
+type SwarmIdentity = {
   role: string;
-  decision: string;
   agenticId?: string;
+  chain?: string;
+  contract?: string;
+  tokenId?: string;
   metadataHash?: string;
+  authorizedExecutor?: string;
+};
+type SwarmVote = SwarmIdentity & {
+  decision: string;
   responseId?: string;
   responseKey?: string;
   rationale: string[];
@@ -121,6 +127,7 @@ type SwarmSnapshot = {
   verdict?: string;
   releaseReady?: boolean;
   divergences: string[];
+  identities: SwarmIdentity[];
   votes: SwarmVote[];
 };
 
@@ -130,6 +137,7 @@ const ATTESTATION_DRAFT_STORAGE_EVENT = 'brew:attestation-draft-storage';
 const ATTESTATION_DRAFT_STORAGE_PREFIX = 'brew:attestation-draft:v1';
 const KEEPERHUB_EXECUTION_STORAGE_EVENT = 'brew:keeperhub-execution-storage';
 const KEEPERHUB_EXECUTION_STORAGE_PREFIX = 'brew:keeperhub-execution:v1';
+const ZERO_G_CHAINSCAN_GALILEO_URL = 'https://chainscan-galileo.0g.ai';
 const STORAGE_SCAN_GALILEO_URL = 'https://storagescan-galileo.0g.ai';
 const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as Hex;
 const DEFAULT_FIELD_VALUES: Record<string, string> = {
@@ -647,6 +655,31 @@ function readStringArrayValue(value: unknown) {
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
 }
 
+function readSwarmIdentity(value: unknown, index: number): SwarmIdentity | null {
+  if (!isRecord(value)) return null;
+
+  const role = recordString(value, 'role') ?? `agent-${index + 1}`;
+  const identity = {
+    role,
+    agenticId: recordString(value, 'agenticId'),
+    chain: recordString(value, 'chain'),
+    contract: recordString(value, 'contract'),
+    tokenId: recordString(value, 'tokenId'),
+    metadataHash: recordString(value, 'metadataHash'),
+    authorizedExecutor: recordString(value, 'authorizedExecutor'),
+  };
+  const hasIdentityData = Boolean(
+    identity.agenticId ||
+      identity.chain ||
+      identity.contract ||
+      identity.tokenId ||
+      identity.metadataHash ||
+      identity.authorizedExecutor,
+  );
+
+  return hasIdentityData ? identity : null;
+}
+
 function readSwarmVote(value: unknown, index: number): SwarmVote | null {
   if (!isRecord(value)) return null;
 
@@ -655,7 +688,11 @@ function readSwarmVote(value: unknown, index: number): SwarmVote | null {
     role: recordString(value, 'role') ?? `agent-${index + 1}`,
     decision: recordString(value, 'decision') ?? 'unknown',
     agenticId: recordString(value, 'agenticId'),
+    chain: recordString(value, 'chain'),
+    contract: recordString(value, 'contract'),
+    tokenId: recordString(value, 'tokenId'),
     metadataHash: recordString(value, 'metadataHash'),
+    authorizedExecutor: recordString(value, 'authorizedExecutor'),
     responseId: recordString(raw, 'responseId'),
     responseKey: recordString(raw, 'responseKey'),
     rationale: readStringArrayValue(value.rationale),
@@ -663,14 +700,71 @@ function readSwarmVote(value: unknown, index: number): SwarmVote | null {
   };
 }
 
+function identityKey(identity: SwarmIdentity) {
+  return [identity.role, identity.agenticId, identity.contract, identity.tokenId]
+    .filter(Boolean)
+    .join(':');
+}
+
+function mergeSwarmIdentities(primary: SwarmIdentity[], fallback: SwarmIdentity[]) {
+  const seen = new Set<string>();
+  const merged: SwarmIdentity[] = [];
+
+  for (const identity of [...primary, ...fallback]) {
+    const key = identityKey(identity);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(identity);
+  }
+
+  return merged;
+}
+
+function parseAgenticId(value?: string) {
+  if (!value) return {};
+
+  const match = /^([^:]+):(0x[0-9a-fA-F]{40})\/([^/]+)$/.exec(value);
+  if (!match) return {};
+
+  return {
+    chain: match[1],
+    contract: match[2],
+    tokenId: match[3],
+  };
+}
+
+function agenticContract(identity: SwarmIdentity) {
+  const parsed = parseAgenticId(identity.agenticId);
+  return identity.contract ?? parsed.contract;
+}
+
+function agenticTokenId(identity: SwarmIdentity) {
+  const parsed = parseAgenticId(identity.agenticId);
+  return identity.tokenId ?? parsed.tokenId;
+}
+
+function agenticChain(identity: SwarmIdentity) {
+  const parsed = parseAgenticId(identity.agenticId);
+  return identity.chain ?? parsed.chain;
+}
+
+function zeroGAddressLink(address?: string) {
+  return address && isAddress(address) ? `${ZERO_G_CHAINSCAN_GALILEO_URL}/address/${address}` : undefined;
+}
+
 function readSwarmSnapshot(value: unknown): SwarmSnapshot | null {
   if (!isRecord(value)) return null;
 
   const swarm = isRecord(value.swarm) ? value.swarm : undefined;
+  const reviewCouncil = isRecord(value.reviewCouncil) ? value.reviewCouncil : undefined;
   const aggregate = isRecord(value.aggregate) ? value.aggregate : undefined;
   const rounds = Array.isArray(swarm?.rounds) ? swarm.rounds : [];
   const firstRound = isRecord(rounds[0]) ? rounds[0] : undefined;
   const roundAggregate = isRecord(firstRound?.aggregate) ? firstRound.aggregate : aggregate;
+  const rawIdentities = Array.isArray(reviewCouncil?.agenticIds) ? reviewCouncil.agenticIds : [];
+  const identities = rawIdentities
+    .map((identity, index) => readSwarmIdentity(identity, index))
+    .filter((identity): identity is SwarmIdentity => identity !== null);
   const rawVotes = Array.isArray(firstRound?.votes)
     ? firstRound.votes
     : Array.isArray(value.votes)
@@ -693,6 +787,7 @@ function readSwarmSnapshot(value: unknown): SwarmSnapshot | null {
     verdict: recordString(roundAggregate, 'verdict'),
     releaseReady: recordBoolean(roundAggregate, 'releaseReady'),
     divergences: readStringArrayValue(firstRound?.divergences ?? roundAggregate?.divergences),
+    identities: mergeSwarmIdentities(identities, votes),
     votes,
   };
 }
@@ -1458,6 +1553,56 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                   </strong>
                 </div>
               </div>
+
+              {receiptSwarm.identities.length > 0 ? (
+                <div className="agent-identity-panel">
+                  <div className="agent-identity-header">
+                    <span className="data-label">Agent identities</span>
+                    <strong>0G Galileo Agentic IDs</strong>
+                  </div>
+                  <div className="agent-identity-grid">
+                    {receiptSwarm.identities.map((identity) => {
+                      const contract = agenticContract(identity);
+                      const tokenId = agenticTokenId(identity);
+                      const chain = agenticChain(identity);
+                      const contractLink = zeroGAddressLink(contract);
+
+                      return (
+                        <div className="agent-identity-card" key={identityKey(identity)}>
+                          <div className="agent-identity-title">
+                            <span className="data-label">{identity.role}</span>
+                            <strong>{tokenId ? `Token #${tokenId}` : 'Agent token'}</strong>
+                          </div>
+                          <div className="agent-identity-values">
+                            <span>Agentic ID</span>
+                            <strong title={identity.agenticId}>{shortValue(identity.agenticId)}</strong>
+                            <span>Chain</span>
+                            <strong>{chain ?? '-'}</strong>
+                            <span>Contract</span>
+                            {contract && contractLink ? (
+                              <a className="tx-link" href={contractLink} target="_blank" rel="noreferrer">
+                                {shortenAddress(contract)}
+                              </a>
+                            ) : (
+                              <strong>-</strong>
+                            )}
+                            <span>Metadata</span>
+                            <strong title={identity.metadataHash}>
+                              {shortValue(identity.metadataHash)}
+                            </strong>
+                            <span>Executor</span>
+                            <strong title={identity.authorizedExecutor}>
+                              {identity.authorizedExecutor
+                                ? shortenAddress(identity.authorizedExecutor)
+                                : '-'}
+                            </strong>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="swarm-vote-grid">
                 {receiptSwarm.votes.map((vote) => (

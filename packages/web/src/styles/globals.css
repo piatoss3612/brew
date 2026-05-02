@@ -724,6 +724,62 @@ h1 {
   background: rgba(246, 244, 239, 0.58);
 }
 
+.agent-identity-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(20, 17, 15, 0.1);
+  background: rgba(246, 244, 239, 0.5);
+}
+
+.agent-identity-header,
+.agent-identity-title {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-identity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.agent-identity-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(20, 17, 15, 0.1);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.agent-identity-card strong,
+.agent-identity-card a {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-identity-values {
+  display: grid;
+  grid-template-columns: minmax(78px, 0.58fr) minmax(0, 1fr);
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.agent-identity-values span {
+  color: #706a61;
+  font-size: 0.78rem;
+}
+
+.agent-identity-values strong,
+.agent-identity-values a {
+  font-size: 0.78rem;
+}
+
 .swarm-vote-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -921,6 +977,7 @@ h1 {
   }
 
   .swarm-meta,
+  .agent-identity-grid,
   .swarm-vote-grid {
     grid-template-columns: 1fr;
   }
