@@ -483,12 +483,20 @@ function readDeadlineSeconds(value?: string) {
   }
 }
 
+function deploymentStorageScope() {
+  return [
+    BREW_CHAIN.id,
+    BREW_ESCROW_ADDRESS.toLowerCase(),
+    BREW_VERIFIER_ADDRESS.toLowerCase(),
+  ].join(':');
+}
+
 function keeperHubExecutionStorageKey(trustId: string) {
-  return `${KEEPERHUB_EXECUTION_STORAGE_PREFIX}:${trustId}`;
+  return `${KEEPERHUB_EXECUTION_STORAGE_PREFIX}:${deploymentStorageScope()}:${trustId}`;
 }
 
 function attestationDraftStorageKey(trustId: string) {
-  return `${ATTESTATION_DRAFT_STORAGE_PREFIX}:${trustId}`;
+  return `${ATTESTATION_DRAFT_STORAGE_PREFIX}:${deploymentStorageScope()}:${trustId}`;
 }
 
 function storageScanSubmissionLink(sequence: number) {
