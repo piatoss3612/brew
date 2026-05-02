@@ -22,6 +22,7 @@ contract AttestationVerifier is IAttestationVerifier, Ownable, EIP712 {
     mapping(bytes32 templateId => mapping(address issuer => bool)) private _issuerAllowed;
     mapping(address coordinator => bool) private _reviewCoordinatorAllowed;
     mapping(bytes32 attestationUid => bool) public consumed;
+    bool public demoOpenIssuerMode;
 
     constructor(address initialOwner, IEAS eas_, IBrewEscrow escrow_)
         Ownable(initialOwner)
@@ -65,6 +66,12 @@ contract AttestationVerifier is IAttestationVerifier, Ownable, EIP712 {
         _issuerAllowed[templateId][issuer] = allowed;
 
         emit IssuerAllowlisted(templateId, issuer, allowed);
+    }
+
+    function setDemoOpenIssuerMode(bool enabled) external onlyOwner {
+        demoOpenIssuerMode = enabled;
+
+        emit DemoOpenIssuerModeUpdated(enabled);
     }
 
     function setReviewCoordinatorAllowed(address coordinator, bool allowed) external onlyOwner {
@@ -233,7 +240,7 @@ contract AttestationVerifier is IAttestationVerifier, Ownable, EIP712 {
         if (attestation.schema != template.schemaUid) {
             revert SchemaMismatch(templateId, template.schemaUid, attestation.schema);
         }
-        if (!_issuerAllowed[templateId][attestation.attester]) {
+        if (!demoOpenIssuerMode && !_issuerAllowed[templateId][attestation.attester]) {
             revert IssuerNotAllowed(templateId, attestation.attester);
         }
         if (attestation.recipient != beneficiary) {

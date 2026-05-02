@@ -66,8 +66,8 @@ source .env
 Base Sepolia deployment output:
 
 ```
-BREW_ESCROW_ADDRESS=0xBB3e0B8f1F31e1dDac553A43F1fcEe305Cff38f2
-BREW_VERIFIER_ADDRESS=0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062
+BREW_ESCROW_ADDRESS=0x9Ddb398600E37a7b68936D316b6889EE21e0EAe9
+BREW_VERIFIER_ADDRESS=0xe9aD090798B0CEDb2aaCA48d202f02071ccfb7e5
 ```
 
 ### 2. EAS Schemas
@@ -97,7 +97,9 @@ FELLOWSHIP_SCHEMA_UID=0xcd32f560f8ee50bc49024b8d847d4dabb9bf3672d88c6a64207e83df
 ### 3. Verifier Templates And Issuers
 
 Register verifier templates and allowlist the selected keystore signer as the
-demo issuer for all templates.
+demo issuer for all templates. For the public hackathon demo, set
+`BREW_DEMO_OPEN_ISSUER_MODE=true` before running the script if any connected
+wallet should be able to issue the EAS attestation.
 
 ```sh
 forge script script/ConfigureBrewVerifier.s.sol:ConfigureBrewVerifier \
@@ -110,6 +112,10 @@ forge script script/ConfigureBrewVerifier.s.sol:ConfigureBrewVerifier \
 For the hackathon demo, the deployer account can act as both verifier owner and
 demo issuer. Later, the app can expose `setIssuerAllowed` if separate issuer
 accounts are needed.
+
+`BREW_DEMO_OPEN_ISSUER_MODE=true` keeps template/schema/freshness checks intact
+but bypasses the issuer allowlist check. Keep it disabled for a production-style
+flow where only trusted issuers can satisfy a template.
 
 result:
 
@@ -128,6 +134,7 @@ allowlisted issuer for fellowship_milestone: 0x965B0E63e00E7805569ee3B428Cf96330
 0x92bdb8ca14551d4f3d29e067f01c52ba083495f325dbd55b31c0b9d810688faa
 BREW_CONFIG_SENDER=0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
 DEMO_ISSUER_ADDRESS=0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
+DEMO_OPEN_ISSUER_MODE=true
 ```
 
 ### 4. Review Coordinator
@@ -159,7 +166,7 @@ signature used in `verifyAndReleaseWithReceiptFields`.
 result:
 
 ```
-BREW_VERIFIER_ADDRESS 0x0d0f391bFFd1611aC1Ae3675AdFAf47A72320062
+BREW_VERIFIER_ADDRESS 0xe9aD090798B0CEDb2aaCA48d202f02071ccfb7e5
 BREW_REVIEW_COORDINATOR_ADDRESS 0x965B0E63e00E7805569ee3B428Cf96330DFc57EF
 ```
 

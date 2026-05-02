@@ -12,6 +12,7 @@ contract ConfigureBrewVerifier is Script {
         address owner = _keystoreSigner();
         address demoIssuer = owner;
         AttestationVerifier verifier = AttestationVerifier(vm.envAddress("BREW_VERIFIER_ADDRESS"));
+        bool demoOpenIssuerMode = vm.envOr("BREW_DEMO_OPEN_ISSUER_MODE", false);
 
         vm.startBroadcast();
         _configure(
@@ -50,10 +51,16 @@ contract ConfigureBrewVerifier is Script {
             BrewConfig.FELLOWSHIP_STALENESS_WINDOW,
             demoIssuer
         );
+        verifier.setDemoOpenIssuerMode(demoOpenIssuerMode);
         vm.stopBroadcast();
 
         console2.log("BREW_CONFIG_SENDER=%s", owner);
         console2.log("DEMO_ISSUER_ADDRESS=%s", demoIssuer);
+        if (demoOpenIssuerMode) {
+            console2.log("DEMO_OPEN_ISSUER_MODE=true");
+        } else {
+            console2.log("DEMO_OPEN_ISSUER_MODE=false");
+        }
     }
 
     function _configure(

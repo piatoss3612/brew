@@ -93,6 +93,21 @@ contract AttestationVerifierTest is Test {
         assertFalse(verifier.isIssuerAllowed(TEMPLATE_ID, issuer));
     }
 
+    function testSetDemoOpenIssuerModeStoresFlag() public {
+        assertFalse(verifier.demoOpenIssuerMode());
+
+        vm.prank(owner);
+        verifier.setDemoOpenIssuerMode(true);
+
+        assertTrue(verifier.demoOpenIssuerMode());
+    }
+
+    function testSetDemoOpenIssuerModeRejectsNonOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert();
+        verifier.setDemoOpenIssuerMode(true);
+    }
+
     function testSetReviewCoordinatorAllowedStoresCoordinatorFlag() public {
         assertTrue(verifier.isReviewCoordinatorAllowed(coordinator));
 
@@ -300,6 +315,20 @@ contract AttestationVerifierTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(IAttestationVerifier.IssuerNotAllowed.selector, TEMPLATE_ID, stranger));
         verifier.verifyAndRelease(trustId, beneficiary, uid, receipt, signature);
+    }
+
+    function testVerifyAndReleaseAcceptsUnauthorizedIssuerInDemoOpenIssuerMode() public {
+        vm.prank(owner);
+        verifier.setDemoOpenIssuerMode(true);
+
+        uint256 trustId = _createTrust(TEMPLATE_ID);
+        bytes32 uid = _seedAttestation(
+            stranger, beneficiary, SCHEMA_UID, uint64(block.timestamp), uint64(block.timestamp + 30 days), 0
+        );
+
+        _verifyAndRelease(trustId, beneficiary, uid);
+
+        assertTrue(escrow.isReleased(trustId, beneficiary));
     }
 
     function testVerifyAndReleaseRejectsWrongRecipient() public {

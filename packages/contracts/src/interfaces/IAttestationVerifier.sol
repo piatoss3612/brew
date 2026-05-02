@@ -56,6 +56,7 @@ interface IAttestationVerifier {
 
     event IssuerAllowlisted(bytes32 indexed templateId, address indexed issuer, bool allowed);
     event ReviewCoordinatorAllowlisted(address indexed coordinator, bool allowed);
+    event DemoOpenIssuerModeUpdated(bool enabled);
     event Verified(uint256 indexed trustId, bytes32 indexed attestationUid, address beneficiary);
     event ReviewReceiptAccepted(
         uint256 indexed trustId,
@@ -75,6 +76,9 @@ interface IAttestationVerifier {
 
     /// @notice Allows or blocks an issuer for a registered template.
     function setIssuerAllowed(bytes32 templateId, address issuer, bool allowed) external;
+
+    /// @notice Demo-only switch that accepts any EAS attester for registered templates.
+    function setDemoOpenIssuerMode(bool enabled) external;
 
     /// @notice Allows or blocks a coordinator that can sign review receipts.
     function setReviewCoordinatorAllowed(address coordinator, bool allowed) external;
@@ -109,6 +113,9 @@ interface IAttestationVerifier {
 
     /// @notice Returns whether an issuer is allowed for a template.
     function isIssuerAllowed(bytes32 templateId, address issuer) external view returns (bool);
+
+    /// @notice Returns whether demo open issuer mode is enabled.
+    function demoOpenIssuerMode() external view returns (bool);
 
     /// @notice Returns whether a coordinator is allowed to sign review receipts.
     function isReviewCoordinatorAllowed(address coordinator) external view returns (bool);
