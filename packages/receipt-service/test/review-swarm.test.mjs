@@ -65,6 +65,52 @@ test('runReviewSwarm reaches release quorum with mocked 0G responses', async () 
   assert.deepEqual(result.votes.map((vote) => vote.role), ['evidence', 'policy', 'risk']);
 });
 
+test('runReviewSwarm starts specialist reviews in parallel', async () => {
+  const startedRoles = [];
+  let releaseAll;
+  const allReleased = new Promise((resolve) => {
+    releaseAll = resolve;
+  });
+  let resolveAllStarted;
+  const allStarted = new Promise((resolve) => {
+    resolveAllStarted = resolve;
+  });
+
+  const resultPromise = runReviewSwarm(VALID_INPUT, VALID_CONFIG, {
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      const prompt = body.messages[1].content;
+      const role = roleFromPrompt(prompt);
+      startedRoles.push(role);
+      if (startedRoles.length === 3) resolveAllStarted(true);
+
+      await allReleased;
+      return jsonResponse({
+        id: `chatcmpl-${role}`,
+        choices: [
+          {
+            message: {
+              content: JSON.stringify(reviewForRole(role)),
+            },
+          },
+        ],
+      });
+    },
+  });
+
+  const reachedParallelStart = await Promise.race([
+    allStarted,
+    delay(50).then(() => false),
+  ]);
+  releaseAll();
+  const result = await resultPromise;
+
+  assert.equal(reachedParallelStart, true);
+  assert.deepEqual(startedRoles, ['evidence', 'policy', 'risk']);
+  assert.equal(result.releaseReady, true);
+  assert.equal(result.swarm.coordinationMode, 'parallel-independent-review');
+});
+
 test('evidence agent prompt treats verifier-owned template checks as sufficient for advisory review', async () => {
   let firstPrompt = '';
   const responses = [
@@ -102,6 +148,11 @@ test('runReviewSwarm blocks when any agent fails', async () => {
   assert.equal(result.status, 'reviewed');
   assert.equal(result.aggregate.verdict, 'Rejected');
   assert.deepEqual(result.votes.map((vote) => vote.decision), ['reject', 'reject', 'veto']);
+  assert.deepEqual(result.aggregate.divergences, [
+    'evidence returned reject, expected approve',
+    'policy returned reject, expected approve',
+    'risk returned veto, expected pass',
+  ]);
 });
 
 function jsonResponse(body, options = {}) {
@@ -117,4 +168,23 @@ function jsonResponse(body, options = {}) {
       return JSON.stringify(body);
     },
   };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function roleFromPrompt(prompt) {
+  if (prompt.includes('Evidence Agent')) return 'evidence';
+  if (prompt.includes('Policy Agent')) return 'policy';
+  if (prompt.includes('Risk Agent')) return 'risk';
+  throw new Error(`Unknown prompt: ${prompt}`);
+}
+
+function reviewForRole(role) {
+  if (role === 'risk') {
+    return { decision: 'pass', rationale: ['No risk veto.'], riskFlags: ['none'] };
+  }
+
+  return { decision: 'approve', rationale: [`${role} approved.`], riskFlags: ['none'] };
 }

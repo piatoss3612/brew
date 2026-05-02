@@ -201,6 +201,7 @@ async function inputFromReviewSwarm(input, config) {
     agenticIds: reviewResult.agenticIds,
     votes: reviewResult.votes,
     aggregate: reviewResult.aggregate,
+    swarm: reviewResult.swarm,
     reviewResult,
   };
 }

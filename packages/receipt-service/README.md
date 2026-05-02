@@ -26,6 +26,14 @@ Endpoints:
 
 0G Compute is called by this service, not by the KeeperHub Code node, because the KeeperHub sandbox can block direct external compute-network fetches. KeeperHub remains in the critical path as the workflow that receives the signed receipt and performs the web3 action.
 
+The Brew swarm is a verifiable release council, not a P2P agent mesh. Evidence, Policy, and Risk agents receive the same trust context and run independent 0G Compute reviews in parallel. The coordinator applies a deterministic quorum rule:
+
+```text
+Evidence approve + Policy approve + Risk pass
+```
+
+Only a passing quorum can produce the signed `ReviewReceipt`. The AI agents do not move funds directly; `AttestationVerifier`, `BrewEscrow`, and the KeeperHub web3 action remain the release authority.
+
 `POST /review-receipt` accepts precomputed votes, or it can run the live swarm when `runReviewSwarm` is `true`. If `agenticIds` are omitted from the request, the service uses `BREW_*_AGENTIC_*` environment variables. The stored artifact is a swarm bundle:
 
 ```json
@@ -58,7 +66,27 @@ Endpoints:
   "aggregate": {
     "rule": "evidence approve + policy approve + risk no-veto",
     "verdict": "ReleaseRecommended",
-    "releaseReady": true
+    "releaseReady": true,
+    "divergences": []
+  },
+  "swarm": {
+    "name": "Brew Release Council",
+    "coordinationMode": "parallel-independent-review",
+    "quorumRule": "evidence approve + policy approve + risk no-veto",
+    "sharedContextDigest": "0x...",
+    "roles": ["evidence", "policy", "risk"],
+    "rounds": [
+      {
+        "round": 1,
+        "mode": "parallel-independent-review",
+        "votes": [],
+        "aggregate": {
+          "verdict": "ReleaseRecommended",
+          "releaseReady": true,
+          "divergences": []
+        }
+      }
+    ]
   }
 }
 ```

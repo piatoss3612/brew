@@ -103,6 +103,26 @@ type SchemaField = {
   type: string;
   name: string;
 };
+type SwarmVote = {
+  role: string;
+  decision: string;
+  agenticId?: string;
+  metadataHash?: string;
+  responseId?: string;
+  responseKey?: string;
+  rationale: string[];
+  riskFlags: string[];
+};
+type SwarmSnapshot = {
+  name: string;
+  coordinationMode: string;
+  quorumRule: string;
+  sharedContextDigest?: string;
+  verdict?: string;
+  releaseReady?: boolean;
+  divergences: string[];
+  votes: SwarmVote[];
+};
 
 const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const SIGNATURE_PATTERN = /^0x[0-9a-fA-F]{130}$/;
@@ -606,6 +626,77 @@ function formatLocalSavedAt(value: string) {
   return formatKeeperHubSavedAt(value);
 }
 
+function shortValue(value?: string) {
+  if (!value) return '-';
+  if (value.length <= 20) return value;
+  return `${value.slice(0, 12)}...${value.slice(-6)}`;
+}
+
+function recordString(value: Record<string, unknown> | undefined, key: string) {
+  const field = value?.[key];
+  return typeof field === 'string' && field.trim() ? field.trim() : undefined;
+}
+
+function recordBoolean(value: Record<string, unknown> | undefined, key: string) {
+  const field = value?.[key];
+  return typeof field === 'boolean' ? field : undefined;
+}
+
+function readStringArrayValue(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function readSwarmVote(value: unknown, index: number): SwarmVote | null {
+  if (!isRecord(value)) return null;
+
+  const raw = isRecord(value.raw) ? value.raw : undefined;
+  return {
+    role: recordString(value, 'role') ?? `agent-${index + 1}`,
+    decision: recordString(value, 'decision') ?? 'unknown',
+    agenticId: recordString(value, 'agenticId'),
+    metadataHash: recordString(value, 'metadataHash'),
+    responseId: recordString(raw, 'responseId'),
+    responseKey: recordString(raw, 'responseKey'),
+    rationale: readStringArrayValue(value.rationale),
+    riskFlags: readStringArrayValue(value.riskFlags),
+  };
+}
+
+function readSwarmSnapshot(value: unknown): SwarmSnapshot | null {
+  if (!isRecord(value)) return null;
+
+  const swarm = isRecord(value.swarm) ? value.swarm : undefined;
+  const aggregate = isRecord(value.aggregate) ? value.aggregate : undefined;
+  const rounds = Array.isArray(swarm?.rounds) ? swarm.rounds : [];
+  const firstRound = isRecord(rounds[0]) ? rounds[0] : undefined;
+  const roundAggregate = isRecord(firstRound?.aggregate) ? firstRound.aggregate : aggregate;
+  const rawVotes = Array.isArray(firstRound?.votes)
+    ? firstRound.votes
+    : Array.isArray(value.votes)
+      ? value.votes
+      : [];
+  const votes = rawVotes
+    .map((vote, index) => readSwarmVote(vote, index))
+    .filter((vote): vote is SwarmVote => vote !== null);
+
+  if (!swarm && votes.length === 0) return null;
+
+  return {
+    name: recordString(swarm, 'name') ?? 'Brew Release Council',
+    coordinationMode: recordString(swarm, 'coordinationMode') ?? 'parallel-independent-review',
+    quorumRule:
+      recordString(swarm, 'quorumRule') ??
+      recordString(roundAggregate, 'rule') ??
+      'evidence approve + policy approve + risk no-veto',
+    sharedContextDigest: recordString(swarm, 'sharedContextDigest'),
+    verdict: recordString(roundAggregate, 'verdict'),
+    releaseReady: recordBoolean(roundAggregate, 'releaseReady'),
+    divergences: readStringArrayValue(firstRound?.divergences ?? roundAggregate?.divergences),
+    votes,
+  };
+}
+
 export function TrustDetail({ trustId }: { trustId: string }) {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -739,6 +830,10 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     typeof receiptArtifactQuery.data?.txSeq === 'number'
       ? receiptArtifactQuery.data.txSeq
       : undefined;
+  const receiptSwarm = useMemo(
+    () => readSwarmSnapshot(receiptArtifactQuery.data?.artifact),
+    [receiptArtifactQuery.data?.artifact],
+  );
 
   const tokenAddress = trust && isAddress(trust.token) ? (trust.token as Address) : undefined;
   const beneficiaryAddress =
@@ -1332,6 +1427,72 @@ export function TrustDetail({ trustId }: { trustId: string }) {
               )}
             </div>
           </div>
+
+          {receiptSwarm ? (
+            <div className="swarm-panel" aria-label="Review swarm round">
+              <div className="swarm-panel-header">
+                <div>
+                  <span className="data-label">Swarm round</span>
+                  <strong>{receiptSwarm.name}</strong>
+                </div>
+                <span className="evidence-mode evidence-mode-live">
+                  {receiptSwarm.coordinationMode}
+                </span>
+              </div>
+
+              <div className="swarm-meta">
+                <div>
+                  <span className="data-label">Quorum</span>
+                  <strong>{receiptSwarm.quorumRule}</strong>
+                </div>
+                <div>
+                  <span className="data-label">Verdict</span>
+                  <strong>
+                    {receiptSwarm.verdict ?? (receiptSwarm.releaseReady ? 'ReleaseRecommended' : '-')}
+                  </strong>
+                </div>
+                <div>
+                  <span className="data-label">Context digest</span>
+                  <strong title={receiptSwarm.sharedContextDigest}>
+                    {shortValue(receiptSwarm.sharedContextDigest)}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="swarm-vote-grid">
+                {receiptSwarm.votes.map((vote) => (
+                  <div className="swarm-vote" key={vote.role}>
+                    <div className="swarm-vote-main">
+                      <span className="data-label">{vote.role}</span>
+                      <strong>{vote.decision}</strong>
+                    </div>
+                    <div className="swarm-vote-values">
+                      <span>Agentic ID</span>
+                      <strong title={vote.agenticId}>{shortValue(vote.agenticId)}</strong>
+                      <span>Metadata</span>
+                      <strong title={vote.metadataHash}>{shortValue(vote.metadataHash)}</strong>
+                      <span>0G response</span>
+                      <strong title={vote.responseId ?? vote.responseKey}>
+                        {shortValue(vote.responseId ?? vote.responseKey)}
+                      </strong>
+                    </div>
+                    {vote.rationale[0] ? (
+                      <p className="form-note">{vote.rationale[0]}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              {receiptSwarm.divergences.length > 0 ? (
+                <div className="swarm-divergences">
+                  <span className="data-label">Divergences</span>
+                  {receiptSwarm.divergences.map((divergence) => (
+                    <strong key={divergence}>{divergence}</strong>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <button
             type="button"

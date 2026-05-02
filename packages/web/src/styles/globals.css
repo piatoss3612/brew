@@ -674,6 +674,92 @@ h1 {
   color: #14110f;
 }
 
+.swarm-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(20, 17, 15, 0.12);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.swarm-panel-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.swarm-panel-header > div,
+.swarm-vote-main,
+.swarm-divergences {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.swarm-panel-header strong,
+.swarm-meta strong,
+.swarm-vote strong,
+.swarm-divergences strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.swarm-meta {
+  display: grid;
+  grid-template-columns: 1.4fr 0.7fr 0.9fr;
+  gap: 10px;
+}
+
+.swarm-meta > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(20, 17, 15, 0.08);
+  background: rgba(246, 244, 239, 0.58);
+}
+
+.swarm-vote-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.swarm-vote {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(20, 17, 15, 0.1);
+  background: rgba(20, 17, 15, 0.035);
+}
+
+.swarm-vote-values {
+  display: grid;
+  grid-template-columns: minmax(78px, 0.6fr) minmax(0, 1fr);
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.swarm-vote-values span {
+  color: #706a61;
+  font-size: 0.78rem;
+}
+
+.swarm-vote-values strong {
+  font-size: 0.78rem;
+}
+
+.swarm-divergences {
+  padding-top: 12px;
+  border-top: 1px solid rgba(20, 17, 15, 0.1);
+}
+
 .form-note,
 .tx-link {
   max-width: 100%;
@@ -831,6 +917,11 @@ h1 {
   }
 
   .schema-field-list {
+    grid-template-columns: 1fr;
+  }
+
+  .swarm-meta,
+  .swarm-vote-grid {
     grid-template-columns: 1fr;
   }
 

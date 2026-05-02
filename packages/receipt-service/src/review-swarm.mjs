@@ -1,5 +1,10 @@
+import { ethers } from 'ethers';
+
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+const SWARM_NAME = 'Brew Release Council';
+const SWARM_COORDINATION_MODE = 'parallel-independent-review';
+const SWARM_QUORUM_RULE = 'evidence approve + policy approve + risk no-veto';
 
 const REVIEW_AGENTS = [
   {
@@ -50,26 +55,27 @@ export async function runReviewSwarm(input, config, options = {}) {
     ...agent,
     identity: agenticIds.find((identity) => identity.role === agent.role) ?? { role: agent.role },
   }));
-  const votes = [];
-  for (const agent of agents) {
-    votes.push(await runReviewAgent(agent, reviewContext, config, fetchImpl));
-  }
+  const votes = await Promise.all(
+    agents.map((agent) => runReviewAgent(agent, reviewContext, config, fetchImpl)),
+  );
   const decisionByRole = Object.fromEntries(votes.map((vote) => [vote.role, vote.decision]));
   const releaseReady =
     decisionByRole.evidence === 'approve' &&
     decisionByRole.policy === 'approve' &&
     decisionByRole.risk === 'pass';
+  const divergences = findDivergences(agents, votes);
   const aggregate = {
-    rule: 'evidence approve + policy approve + risk no-veto',
+    rule: SWARM_QUORUM_RULE,
     verdict: releaseReady ? 'ReleaseRecommended' : 'Rejected',
     releaseReady,
     rationale: votes.flatMap((vote) => vote.rationale ?? []),
+    divergences,
   };
 
   return {
     mode: 'live',
     provider: '0g-compute',
-    agentName: 'Brew Review Swarm',
+    agentName: SWARM_NAME,
     status: releaseReady ? 'ready' : 'reviewed',
     releaseReady,
     trustId: input.trustId,
@@ -86,6 +92,7 @@ export async function runReviewSwarm(input, config, options = {}) {
     agenticIds,
     votes,
     aggregate,
+    swarm: buildSwarmEnvelope({ agents, reviewContext, votes, aggregate }),
   };
 }
 
@@ -230,7 +237,7 @@ async function runReviewAgent(agent, reviewContext, config, fetchImpl) {
 function normalizeAgentReview(agent, review, raw) {
   return {
     role: agent.role,
-    agenticId: pickString(agent.identity?.agenticId),
+    ...agentIdentityFields(agent.identity),
     decision: pickString(review?.decision).toLowerCase() || 'missing_evidence',
     rationale: asStringArray(review?.rationale),
     riskFlags: asStringArray(review?.riskFlags),
@@ -241,11 +248,24 @@ function normalizeAgentReview(agent, review, raw) {
 }
 
 function blockedReview(input, summary) {
-  const votes = REVIEW_AGENTS.map((agent) => blockedVote(agent, summary));
+  const agenticIds = normalizeAgenticIds(input.agenticIds);
+  const agents = REVIEW_AGENTS.map((agent) => ({
+    ...agent,
+    identity: agenticIds.find((identity) => identity.role === agent.role) ?? { role: agent.role },
+  }));
+  const votes = agents.map((agent) => blockedVote(agent, summary));
+  const divergences = findDivergences(agents, votes);
+  const aggregate = {
+    rule: SWARM_QUORUM_RULE,
+    verdict: 'Rejected',
+    releaseReady: false,
+    rationale: [summary],
+    divergences,
+  };
   return {
     mode: 'live',
     provider: '0g-compute',
-    agentName: 'Brew Review Swarm',
+    agentName: SWARM_NAME,
     status: 'blocked',
     releaseReady: false,
     trustId: input.trustId,
@@ -257,27 +277,64 @@ function blockedReview(input, summary) {
     riskFlags: ['workflow_blocked'],
     nextAction: 'do_not_release',
     receiptSummary: summary,
-    agenticIds: normalizeAgenticIds(input.agenticIds),
+    agenticIds,
     votes,
-    aggregate: {
-      rule: 'evidence approve + policy approve + risk no-veto',
-      verdict: 'Rejected',
-      releaseReady: false,
-      rationale: [summary],
-    },
+    aggregate,
+    swarm: buildSwarmEnvelope({ agents, reviewContext: buildReviewContext(input), votes, aggregate }),
   };
 }
 
 function blockedVote(agent, summary, extra = {}) {
   return {
     role: agent.role,
-    agenticId: pickString(agent.identity?.agenticId),
+    ...agentIdentityFields(agent.identity),
     decision: agent.role === 'risk' ? 'veto' : 'reject',
     rationale: [summary],
     riskFlags: ['workflow_blocked'],
     receiptSummary: summary,
     raw: extra,
   };
+}
+
+function agentIdentityFields(identity) {
+  return withoutUndefined({
+    agenticId: pickString(identity?.agenticId),
+    chain: optionalString(identity?.chain),
+    contract: optionalString(identity?.contract),
+    tokenId: optionalString(identity?.tokenId),
+    metadataHash: optionalString(identity?.metadataHash),
+    authorizedExecutor: optionalString(identity?.authorizedExecutor),
+  });
+}
+
+function buildSwarmEnvelope({ agents, reviewContext, votes, aggregate }) {
+  return {
+    name: SWARM_NAME,
+    coordinationMode: SWARM_COORDINATION_MODE,
+    quorumRule: aggregate.rule,
+    sharedContextDigest: digestJson(reviewContext),
+    roles: agents.map((agent) => agent.role),
+    rounds: [
+      {
+        round: 1,
+        mode: SWARM_COORDINATION_MODE,
+        votes,
+        aggregate,
+        divergences: aggregate.divergences ?? [],
+      },
+    ],
+  };
+}
+
+function findDivergences(agents, votes) {
+  const voteByRole = Object.fromEntries(votes.map((vote) => [vote.role, vote]));
+
+  return agents.flatMap((agent) => {
+    const actual = voteByRole[agent.role]?.decision || 'missing';
+    return actual === agent.expectedDecision
+      ? []
+      : [`${agent.role} returned ${actual}, expected ${agent.expectedDecision}`];
+  });
 }
 
 function normalizeAgenticIds(value) {
@@ -330,6 +387,21 @@ function pickString(...values) {
     if (typeof value === 'number' || typeof value === 'bigint') return String(value);
   }
   return '';
+}
+
+function digestJson(value) {
+  return ethers.keccak256(ethers.toUtf8Bytes(stableStringify(value)));
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function withoutUndefined(value) {
