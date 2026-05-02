@@ -9,10 +9,10 @@ import {
   getWalletTrustRole,
   isSameAddress,
   shortHash,
-  shortenAddress,
-  statusLabels,
 } from '../format';
 import { fetchBrewStatus, type BrewTrust } from '../subgraph';
+import { getTrustVisualState } from '../trust-visual-state';
+import { AddressDisplay } from './address-display';
 
 function sortConnectedTrusts(trusts: BrewTrust[], address?: string) {
   if (!address) return trusts;
@@ -38,7 +38,7 @@ export function TrustDirectory() {
   const trusts = sortConnectedTrusts(data?.trusts ?? [], address);
 
   return (
-    <section className="trust-directory" aria-label="Trust directory">
+    <section className="trust-directory" id="trusts" aria-label="Trust directory">
       <div className="section-heading">
         <div>
           <span className="data-label">Indexed trusts</span>
@@ -49,36 +49,53 @@ export function TrustDirectory() {
 
       {trusts.length ? (
         <div className="trust-list">
-          {trusts.map((trust) => (
-            <Link className="trust-card" href={`/trust/${trust.trustId}`} key={trust.id}>
-              <div className="trust-card-main">
-                <span>Trust #{trust.trustId}</span>
-                <strong>{statusLabels[trust.status]}</strong>
-              </div>
-              <div className="trust-card-grid">
-                <div>
-                  <span className="data-label">Role</span>
-                  <strong>{getWalletTrustRole(trust.sponsor, trust.beneficiary, address)}</strong>
+          {trusts.map((trust) => {
+            const visualState = getTrustVisualState(trust);
+
+            return (
+              <Link
+                className={`trust-card trust-card-${visualState.tone}`}
+                href={`/trust/${trust.trustId}`}
+                key={trust.id}
+              >
+                <div className="trust-card-main">
+                  <div>
+                    <span>Trust #{trust.trustId}</span>
+                    <strong>{visualState.label}</strong>
+                  </div>
+                  <span className={`status-badge status-badge-${visualState.tone}`}>
+                    {visualState.label}
+                  </span>
                 </div>
-                <div>
-                  <span className="data-label">Sponsor</span>
-                  <strong>{shortenAddress(trust.sponsor)}</strong>
+                <div className="trust-progress" aria-hidden="true">
+                  <span style={{ width: `${visualState.progress}%` }} />
                 </div>
-                <div>
-                  <span className="data-label">Beneficiary</span>
-                  <strong>{shortenAddress(trust.beneficiary)}</strong>
+                <p className="trust-card-state">{visualState.detail}</p>
+                <div className="trust-card-grid">
+                  <div>
+                    <span className="data-label">Role</span>
+                    <strong>{getWalletTrustRole(trust.sponsor, trust.beneficiary, address)}</strong>
+                  </div>
+                  <div>
+                    <span className="data-label">Sponsor</span>
+                    <AddressDisplay address={trust.sponsor} />
+                  </div>
+                  <div>
+                    <span className="data-label">Beneficiary</span>
+                    <AddressDisplay address={trust.beneficiary} />
+                  </div>
+                  <div>
+                    <span className="data-label">Template</span>
+                    <strong>{shortHash(trust.templateId)}</strong>
+                  </div>
+                  <div>
+                    <span className="data-label">Created</span>
+                    <strong>{formatTimestamp(trust.createdAt)}</strong>
+                  </div>
                 </div>
-                <div>
-                  <span className="data-label">Template</span>
-                  <strong>{shortHash(trust.templateId)}</strong>
-                </div>
-                <div>
-                  <span className="data-label">Created</span>
-                  <strong>{formatTimestamp(trust.createdAt)}</strong>
-                </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       ) : (
         <p className="form-note">

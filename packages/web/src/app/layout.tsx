@@ -9,6 +9,9 @@ import { Providers } from './providers';
 export const metadata: Metadata = {
   title: 'Brew',
   description: 'Agentic escrow release runtime for conditional grants.',
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -67,6 +67,31 @@ function shortMaybeHash(value?: string) {
   return value && value.startsWith('0x') && value.length > 18 ? shortHash(value) : value;
 }
 
+function TrailStep({
+  index,
+  label,
+  title,
+  detail,
+  mode,
+}: {
+  index: number;
+  label: string;
+  title: string;
+  detail: string;
+  mode: EvidenceMode;
+}) {
+  return (
+    <div className={`evidence-trail-step evidence-trail-step-${mode}`}>
+      <span className="evidence-trail-index">{String(index).padStart(2, '0')}</span>
+      <div>
+        <span className="data-label">{label}</span>
+        <strong>{title}</strong>
+        <small>{detail}</small>
+      </div>
+    </div>
+  );
+}
+
 export function SponsorEvidencePanel({
   evidence,
   onOpenStorageUri,
@@ -75,6 +100,22 @@ export function SponsorEvidencePanel({
   onOpenStorageUri?: (uri: string) => void;
 }) {
   const hasStorageSubmission = typeof evidence.storage.submissionSequence === 'number';
+  const receiptStored =
+    evidence.storage.storageStatus === 'live'
+      ? 'Receipt artifact is available on 0G Storage'
+      : 'Receipt artifact will be resolved after review';
+  const keeperExecutionDetail =
+    evidence.keeperHub.txHash
+      ? `Release tx ${shortHash(evidence.keeperHub.txHash)}`
+      : evidence.keeperHub.revertReason ?? evidence.keeperHub.nodeStatusSummary;
+  const verifierMode: EvidenceMode =
+    evidence.verifier.outcome === 'pending' ? 'simulated' : 'live';
+  const verifierDetail =
+    evidence.verifier.outcome === 'released'
+      ? 'Verifier accepted the signed receipt and released funds'
+      : evidence.verifier.outcome === 'refunded'
+        ? 'Trust was recovered by sponsor refund'
+        : 'Verifier is waiting for a valid release call';
 
   return (
     <section className="sponsor-panel" aria-label="Sponsor evidence">
@@ -86,21 +127,53 @@ export function SponsorEvidencePanel({
         <strong>{evidence.verifier.outcome}</strong>
       </div>
 
+      <div className="evidence-trail-grid" aria-label="Agent execution steps">
+        <TrailStep
+          index={1}
+          label="Review"
+          title="0G agents inspect the proof"
+          detail={evidence.agent.intervention.responsibility}
+          mode={evidence.storage.storageStatus}
+        />
+        <TrailStep
+          index={2}
+          label="Store"
+          title="Receipt is sealed"
+          detail={receiptStored}
+          mode={evidence.storage.storageStatus}
+        />
+        <TrailStep
+          index={3}
+          label="Execute"
+          title="KeeperHub runs the release workflow"
+          detail={keeperExecutionDetail}
+          mode={evidence.keeperHub.executionMode}
+        />
+        <TrailStep
+          index={4}
+          label="Settle"
+          title="Verifier controls fund movement"
+          detail={verifierDetail}
+          mode={verifierMode}
+        />
+      </div>
+
       <div className="evidence-grid">
         <article className="evidence-card">
           <div className="evidence-card-header">
             <div>
-              <span className="data-label">ENS</span>
-              <h3>Agent identity</h3>
+              <span className="data-label">0G Release Council</span>
+              <h3>Agent review</h3>
             </div>
-            <EvidenceModeBadge mode={evidence.agent.resolverMode} />
+            <EvidenceModeBadge mode={evidence.storage.storageStatus} />
           </div>
           <div className="evidence-values">
-            <EvidenceValue label="Name" value={evidence.agent.ensName} />
-            <EvidenceValue label="Role" value={evidence.agent.role} />
-            <EvidenceValue label="Intervenes" value={evidence.agent.intervention.location} />
+            <EvidenceValue label="Agents" value="Evidence / Policy / Risk" />
+            <EvidenceValue label="Output" value="Signed review receipt" />
+            <EvidenceValue label="Handoff" value="KeeperHub release workflow" />
+            <EvidenceValue label="Boundary" value="Verifier controls fund movement" />
             <EvidenceValue
-              label="Workflow"
+              label="Workflow ID"
               value={evidence.agent.records['com.brew.keeperhub_workflow']}
             />
             <EvidenceValue label="0G root" value={evidence.agent.records['com.brew.0g_root']} />
@@ -111,7 +184,7 @@ export function SponsorEvidencePanel({
           <div className="evidence-card-header">
             <div>
               <span className="data-label">KeeperHub</span>
-              <h3>Release execution</h3>
+              <h3>Workflow execution</h3>
             </div>
             <EvidenceModeBadge mode={evidence.keeperHub.executionMode} />
           </div>
@@ -144,7 +217,7 @@ export function SponsorEvidencePanel({
           <div className="evidence-card-header">
             <div>
               <span className="data-label">0G</span>
-              <h3>Evidence receipt</h3>
+              <h3>Receipt storage</h3>
             </div>
             <EvidenceModeBadge mode={evidence.storage.storageStatus} />
           </div>
@@ -190,29 +263,6 @@ export function SponsorEvidencePanel({
           </div>
         </article>
 
-        <article className="evidence-card">
-          <div className="evidence-card-header">
-            <div>
-              <span className="data-label">Issuer</span>
-              <h3>Proof source</h3>
-            </div>
-            <EvidenceModeBadge mode={evidence.issuer.resolverMode} />
-          </div>
-          <div className="evidence-values">
-            <EvidenceValue
-              label="Issuer"
-              value={shortenMaybeAddress(evidence.issuer.address)}
-              title={evidence.issuer.address}
-            />
-            <EvidenceValue label="ENS" value={evidence.issuer.ensName} />
-            <EvidenceValue label="Authorization" value={evidence.issuer.authorizationSource} />
-            <EvidenceValue
-              label="Attestation"
-              value={shortMaybeHash(evidence.verifier.input.attestationUid)}
-              title={evidence.verifier.input.attestationUid}
-            />
-          </div>
-        </article>
       </div>
 
       <div className="evidence-authority">

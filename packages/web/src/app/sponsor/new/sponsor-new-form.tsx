@@ -25,16 +25,65 @@ import {
 import { isEnsName, resolveEnsAddress } from '../../../ens';
 import { fetchBrewStatus, type BrewTemplate } from '../../../subgraph';
 
-type StepState = 'idle' | 'switching' | 'approving' | 'creating' | 'confirmed' | 'error';
+type StepState =
+  | 'idle'
+  | 'switching'
+  | 'approving'
+  | 'creating'
+  | 'indexing'
+  | 'confirmed'
+  | 'error';
 
 const ZERO = BigInt(0);
 const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+const APPROVAL_SETTLE_DELAY_MS = 1_500;
+const INDEXER_SETTLE_DELAY_MS = 5_000;
 
 const TEMPLATE_LABELS_BY_SCHEMA_UID: Record<string, string> = {
   '0x01a3629d02136181035c01693fc6fa5e868061456b8865f56ba9c51a4b36b5c1': 'Workplace',
   '0x6429c150638a057d5d4b034e6530c9f1b5f300fc96edc0461d25effd8bfda9d5': 'DAO grant',
   '0xcd32f560f8ee50bc49024b8d847d4dabb9bf3672d88c6a64207e83dfde4f6a6a': 'Fellowship',
   '0xd9d697d74ca8ad8f0ee967b724eccadee7695b8f9a12f0ddb580e6aa6bbb3325': 'Degree',
+};
+
+const TEMPLATE_PROFILES_BY_SCHEMA_UID: Record<
+  string,
+  {
+    title: string;
+    description: string;
+    evidence: string;
+    issuer: string;
+    reviewFocus: string;
+  }
+> = {
+  '0x01a3629d02136181035c01693fc6fa5e868061456b8865f56ba9c51a4b36b5c1': {
+    title: 'Workplace proof',
+    description: 'Use this when the release condition depends on employment, contribution, or workplace participation evidence.',
+    evidence: 'Recipient, organization, role or contribution, issued timestamp.',
+    issuer: 'Employer, team lead, or project operator',
+    reviewFocus: 'Freshness, issuer permission, and beneficiary match.',
+  },
+  '0x6429c150638a057d5d4b034e6530c9f1b5f300fc96edc0461d25effd8bfda9d5': {
+    title: 'DAO grant proof',
+    description: 'Use this for grant batches where funds should release only after a DAO or program milestone is attested.',
+    evidence: 'Grant round, milestone, recipient, and program context.',
+    issuer: 'DAO grant committee or program steward',
+    reviewFocus: 'Milestone evidence, template match, and duplicate-release risk.',
+  },
+  '0xcd32f560f8ee50bc49024b8d847d4dabb9bf3672d88c6a64207e83dfde4f6a6a': {
+    title: 'Fellowship proof',
+    description: 'Use this when eligibility comes from fellowship selection, cohort membership, or program completion.',
+    evidence: 'Cohort, track, participant, and issued timestamp.',
+    issuer: 'Fellowship operator or program coordinator',
+    reviewFocus: 'Cohort validity, recipient match, and staleness window.',
+  },
+  '0xd9d697d74ca8ad8f0ee967b724eccadee7695b8f9a12f0ddb580e6aa6bbb3325': {
+    title: 'Degree proof',
+    description: 'Use this for education-linked release conditions backed by an academic credential attestation.',
+    evidence: 'Institution, program, credential, recipient, and issued timestamp.',
+    issuer: 'School, registrar, or credential issuer',
+    reviewFocus: 'Issuer allowlist, credential schema, and expiry window.',
+  },
 };
 
 type SchemaRecord = {
@@ -150,6 +199,26 @@ function getTemplateLabel(template: BrewTemplate) {
   return `${label} / ${shortHash(template.templateId)}`;
 }
 
+function getTemplateProfile(template?: BrewTemplate) {
+  if (!template) {
+    return {
+      title: 'Select a template',
+      description: 'Choose the evidence type that should unlock this trust.',
+      evidence: 'Template ID and schema UID are required.',
+      issuer: 'Allowed issuer for the selected template',
+      reviewFocus: 'Template and recipient consistency.',
+    };
+  }
+
+  return TEMPLATE_PROFILES_BY_SCHEMA_UID[template.schemaUid.toLowerCase()] ?? {
+    title: 'Custom proof',
+    description: 'Use this indexed verifier template as the release condition for the trust.',
+    evidence: 'Fields are loaded from the EAS schema registry when available.',
+    issuer: 'Allowlisted issuer for this template',
+    reviewFocus: 'Schema match, issuer permission, and beneficiary match.',
+  };
+}
+
 function readSchemaRecord(value: unknown): SchemaRecord | null {
   if (!value || typeof value !== 'object') return null;
 
@@ -228,6 +297,12 @@ function formatBalance(value: unknown, decimals: number | null, symbol: string, 
   return formatTokenAmount(value, decimals, symbol);
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 export function SponsorNewForm() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
@@ -282,6 +357,7 @@ export function SponsorNewForm() {
   const templates = statusQuery.data?.templates ?? [];
   const selectedTemplate =
     templates.find((template) => template.templateId === selectedTemplateId) ?? templates[0];
+  const selectedTemplateProfile = getTemplateProfile(selectedTemplate);
   const resolvedTemplateId = selectedTemplate?.templateId ?? '';
   const resolvedSchemaUid = selectedTemplate?.schemaUid ?? '';
   const templateReady = Boolean(resolvedTemplateId && isBytes32(resolvedTemplateId));
@@ -395,7 +471,59 @@ export function SponsorNewForm() {
   const hasEnoughAllowance =
     typeof allowance === 'bigint' && amountUnits > ZERO && allowance >= amountUnits;
   const hasEnoughBalance = balanceKnown && amountUnits > ZERO && balance >= amountUnits;
+  const beneficiaryReady = Boolean(resolvedBeneficiary) && !beneficiaryInputInvalid && !beneficiaryEnsUnresolved;
+  const amountReady = amountUnits > ZERO && tokenMetadataReady;
   const needsNetworkSwitch = isConnected && chainId !== BREW_CHAIN.id;
+  const readinessItems = [
+    {
+      label: 'Token',
+      detail: tokenMetadataReady
+        ? `${tokenSymbol} detected`
+        : tokenAddress
+          ? 'Reading ERC20 metadata'
+          : 'Token address required',
+      state: tokenMetadataReady ? 'ready' : tokenAddress ? 'active' : 'blocked',
+    },
+    {
+      label: 'Template',
+      detail: selectedTemplate ? selectedTemplateProfile.title : 'Verifier template required',
+      state: templateReady ? 'ready' : 'blocked',
+    },
+    {
+      label: 'Beneficiary',
+      detail: resolvedBeneficiary
+        ? beneficiaryInput && shouldResolveEns
+          ? 'ENS resolved'
+          : 'Address ready'
+        : shouldResolveEns
+          ? 'Resolving ENS'
+          : 'Recipient required',
+      state: beneficiaryReady ? 'ready' : shouldResolveEns && ensQuery.isLoading ? 'active' : 'blocked',
+    },
+    {
+      label: 'Amount',
+      detail: amountReady
+        ? hasEnoughBalance
+          ? `${amount} ${tokenSymbol} available`
+          : `Insufficient ${tokenSymbol}`
+        : 'Amount and token metadata required',
+      state: amountReady && hasEnoughBalance ? 'ready' : amountReady ? 'blocked' : 'active',
+    },
+    {
+      label: 'Allowance',
+      detail: hasEnoughAllowance ? 'Escrow can pull funds' : 'Approval will be requested',
+      state: hasEnoughAllowance ? 'ready' : amountReady ? 'active' : 'blocked',
+    },
+    {
+      label: 'Refund',
+      detail: deadlineSeconds === ZERO
+        ? 'Refund disabled'
+        : deadlineSeconds === null
+          ? 'Invalid deadline'
+          : formatDeadline(deadlineSeconds),
+      state: deadlineReady ? 'ready' : 'blocked',
+    },
+  ] as const;
   const canSubmit =
     isConnected &&
     Boolean(publicClient) &&
@@ -408,7 +536,8 @@ export function SponsorNewForm() {
     hasEnoughBalance &&
     step !== 'switching' &&
     step !== 'approving' &&
-    step !== 'creating';
+    step !== 'creating' &&
+    step !== 'indexing';
 
   function updateTokenAddress(value: string) {
     setTokenAddressInput(value);
@@ -458,6 +587,7 @@ export function SponsorNewForm() {
         });
         setApproveHash(nextApproveHash);
         await publicClient.waitForTransactionReceipt({ hash: nextApproveHash });
+        await wait(APPROVAL_SETTLE_DELAY_MS);
         await tokenReads.refetch();
       }
 
@@ -477,6 +607,8 @@ export function SponsorNewForm() {
       });
       setCreateHash(nextCreateHash);
       await publicClient.waitForTransactionReceipt({ hash: nextCreateHash });
+      setStep('indexing');
+      await wait(INDEXER_SETTLE_DELAY_MS);
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['brew-status'] }),
@@ -484,7 +616,7 @@ export function SponsorNewForm() {
       ]);
 
       setStep('confirmed');
-      router.push(`/?trustCreated=1&tx=${nextCreateHash}`);
+      router.push(`/app?trustCreated=1&tx=${nextCreateHash}`);
     } catch (error) {
       setStep('error');
       setErrorMessage(error instanceof Error ? error.message : 'Transaction failed');
@@ -493,76 +625,156 @@ export function SponsorNewForm() {
 
   return (
     <section className="sponsor-panel" aria-label="Create trust">
-      <div className="form-grid input-panel">
-        <label className="wide-field">
-          Token
-          <input
-            autoComplete="off"
-            placeholder={BREW_TOKEN_ADDRESS}
-            value={tokenAddressInput}
-            onChange={(event) => updateTokenAddress(event.target.value)}
-          />
-        </label>
-        <label className="wide-field">
-          Template
-          <select
-            disabled={!templates.length}
-            value={resolvedTemplateId}
-            onChange={(event) => updateTemplateId(event.target.value)}
-          >
-            {templates.length ? (
-              templates.map((template) => (
-                <option key={template.templateId} value={template.templateId}>
-                  {getTemplateLabel(template)}
-                </option>
-              ))
-            ) : (
-              <option value="">No templates indexed</option>
-            )}
-          </select>
-        </label>
-        <label>
-          Beneficiary
-          <span className="beneficiary-field">
-            <input
-              autoComplete="off"
-              placeholder={address ?? 'vitalik.eth or 0x...'}
-              value={beneficiary}
-              onChange={(event) => setBeneficiary(event.target.value)}
-            />
-            {shouldResolveEns && resolvedBeneficiary ? (
-              <span className="beneficiary-suffix" title={resolvedBeneficiary}>
-                {shortHash(resolvedBeneficiary)}
+      <div className="sponsor-composer">
+        <div className="input-panel trust-input-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="data-label">Trust ingredients</span>
+              <h2>Define the funded condition.</h2>
+            </div>
+            <span className="panel-count">
+              {readinessItems.filter((item) => item.state === 'ready').length}/6 ready
+            </span>
+          </div>
+
+          <div className="form-grid">
+            <label className="wide-field">
+              Token
+              <input
+                autoComplete="off"
+                placeholder={BREW_TOKEN_ADDRESS}
+                value={tokenAddressInput}
+                onChange={(event) => updateTokenAddress(event.target.value)}
+              />
+            </label>
+            <label className="wide-field">
+              Template
+              <select
+                disabled={!templates.length}
+                value={resolvedTemplateId}
+                onChange={(event) => updateTemplateId(event.target.value)}
+              >
+                {templates.length ? (
+                  templates.map((template) => (
+                    <option key={template.templateId} value={template.templateId}>
+                      {getTemplateLabel(template)}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No templates indexed</option>
+                )}
+              </select>
+            </label>
+            <label className="wide-field">
+              Beneficiary
+              <span className="beneficiary-field">
+                <input
+                  autoComplete="off"
+                  placeholder={address ?? 'vitalik.eth or 0x...'}
+                  value={beneficiary}
+                  onChange={(event) => setBeneficiary(event.target.value)}
+                />
+                {shouldResolveEns && resolvedBeneficiary ? (
+                  <span className="beneficiary-suffix" title={resolvedBeneficiary}>
+                    {shortHash(resolvedBeneficiary)}
+                  </span>
+                ) : null}
               </span>
-            ) : null}
-          </span>
-        </label>
-        <label>
-          Amount
-          <span className="amount-field">
-            <input
-              inputMode="decimal"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-            />
-            <span className="amount-unit">{tokenSymbol}</span>
-          </span>
-        </label>
-        <label className="wide-field">
-          Refund deadline
-          <input
-            min={minDeadlineInput}
-            type="datetime-local"
-            value={deadlineInput}
-            onChange={(event) => {
-              setDeadlineInput(event.target.value);
-              setStep('idle');
-              setApproveHash(null);
-              setCreateHash(null);
-              setErrorMessage(null);
-            }}
-          />
-        </label>
+            </label>
+            <label>
+              Amount
+              <span className="amount-field">
+                <input
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                />
+                <span className="amount-unit">{tokenSymbol}</span>
+              </span>
+            </label>
+            <label className="wide-field">
+              Refund deadline
+              <input
+                min={minDeadlineInput}
+                type="datetime-local"
+                value={deadlineInput}
+                onChange={(event) => {
+                  setDeadlineInput(event.target.value);
+                  setStep('idle');
+                  setApproveHash(null);
+                  setCreateHash(null);
+                  setErrorMessage(null);
+                }}
+              />
+            </label>
+          </div>
+        </div>
+
+        <aside className="trust-preview-panel" aria-label="Trust preview">
+          <div className="template-profile">
+            <div className="template-profile-header">
+              <span className="data-label">Selected template</span>
+              <strong>{selectedTemplateProfile.title}</strong>
+            </div>
+            <p>{selectedTemplateProfile.description}</p>
+            <div className="template-profile-grid">
+              <div>
+                <span className="data-label">Expected evidence</span>
+                <strong>{selectedTemplateProfile.evidence}</strong>
+              </div>
+              <div>
+                <span className="data-label">Issuer</span>
+                <strong>{selectedTemplateProfile.issuer}</strong>
+              </div>
+              <div className="wide-field">
+                <span className="data-label">Agent review focus</span>
+                <strong>{selectedTemplateProfile.reviewFocus}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="composer-checklist">
+            <div className="schema-fields-header">
+              <span className="data-label">Creation readiness</span>
+              <strong>{canSubmit ? 'Ready' : 'Incomplete'}</strong>
+            </div>
+            {readinessItems.map((item) => (
+              <div className={`check-item check-item-${item.state}`} key={item.label}>
+                <span aria-hidden="true" />
+                <div>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="contract-preview">
+            <div className="schema-fields-header">
+              <span className="data-label">Contract preview</span>
+              <strong>{hasEnoughAllowance ? '1 tx' : '2 txs'}</strong>
+            </div>
+            <div className="contract-preview-row">
+              <span>Beneficiary</span>
+              <strong title={resolvedBeneficiary ?? undefined}>
+                {resolvedBeneficiary ? shortHash(resolvedBeneficiary) : '-'}
+              </strong>
+            </div>
+            <div className="contract-preview-row">
+              <span>Amount</span>
+              <strong>{amountReady ? `${amount} ${tokenSymbol}` : '-'}</strong>
+            </div>
+            <div className="contract-preview-row">
+              <span>Release condition</span>
+              <strong>{selectedTemplateProfile.title}</strong>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div className="technical-preview-heading">
+        <span className="data-label">Technical preview</span>
+        <h3>Escrow calldata inputs</h3>
       </div>
 
       <div className="trust-summary">
@@ -672,7 +884,9 @@ export function SponsorNewForm() {
       </div>
 
       <button className="primary-action" disabled={!canSubmit} onClick={submitTrust}>
-        {needsNetworkSwitch
+        {step === 'indexing'
+          ? 'Waiting for indexer'
+          : needsNetworkSwitch
           ? 'Switch and create trust'
           : hasEnoughAllowance
             ? 'Create trust'

@@ -16,7 +16,7 @@ export function OverviewToast({ created, tx }: { created: boolean; tx?: string }
   useEffect(() => {
     if (!created) return;
 
-    router.replace('/', { scroll: false });
+    router.replace('/app', { scroll: false });
   }, [created, router]);
 
   useEffect(() => {
