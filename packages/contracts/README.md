@@ -1,5 +1,11 @@
 # Brew Contracts
 
+Brew contracts enforce the release boundary for the demo. The 0G review council
+can recommend release, but `AttestationVerifier` and `BrewEscrow` decide whether
+funds can move.
+
+For the full system flow, see [../../docs/workflow.md](../../docs/workflow.md).
+
 ## Build And Test
 
 ```sh

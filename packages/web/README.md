@@ -2,24 +2,23 @@
 
 Next.js app for the Brew demo on Base Sepolia.
 
-## Release Flow
+The web app is the user surface only. It never owns signer keys, 0G Compute
+secrets, 0G Storage keys, or KeeperHub webhook secrets. It calls the deployed
+receipt service, and the receipt service hands the signed release payload to
+KeeperHub.
 
-The web app triggers the deployed receipt service. KeeperHub stays in the release path as the workflow that performs the web3 action:
+For the full system flow, see [../../docs/workflow.md](../../docs/workflow.md).
+For the demo sequence, see
+[../../docs/demo-runbook.md](../../docs/demo-runbook.md).
 
-```text
-UI trigger
--> receipt-service /review-receipt
--> receipt-service runs 0G Compute Evidence / Policy / Risk review swarm
--> receipt-service uploads ReviewReceipt artifact to 0G Storage
--> receipt-service signs EIP-712 ReviewReceipt over the storage root
--> receipt-service calls KeeperHub workflow webhook with the signed receipt
--> KeeperHub workflow calls AttestationVerifier.verifyAndReleaseWithReceiptFields
--> UI receives reviewReceipt, coordinatorSignature, and KeeperHub workflow result
-```
+## Pages
 
-The coordinator private key stays in `packages/receipt-service`. Do not put signer keys, 0G Compute secrets, 0G Storage keys, or KeeperHub webhook secrets in the browser. The AI review is advisory; `AttestationVerifier` and `BrewEscrow` remain the release authority. `receiptRoot` is the 0G Storage root of the persisted review artifact.
+- `/`: landing page.
+- `/app`: overview and trust list.
+- `/sponsor/new`: create a funded trust.
+- `/trust/[trustId]`: attach attestation, run review/release, inspect receipt.
 
-## Setup
+## Local Setup
 
 ```bash
 yarn install
@@ -27,32 +26,53 @@ cp .env.example .env.local
 yarn dev
 ```
 
-Validate 0G Compute before enabling live release:
+## Build Checks
 
 ```bash
-cd ../receipt-service
-yarn killtest:review-receipt --run-review-swarm
+yarn lint
+yarn build
 ```
 
-Validate 0G Storage receipt persistence:
+## Environment
 
-```bash
-cd ../receipt-service
-yarn killtest:review-receipt
+Required for normal demo use:
+
+```env
+NEXT_PUBLIC_BREW_ESCROW_ADDRESS=
+NEXT_PUBLIC_BREW_VERIFIER_ADDRESS=
+NEXT_PUBLIC_BREW_TOKEN_ADDRESS=
+NEXT_PUBLIC_BREW_SUBGRAPH_URL=
+BREW_REVIEW_RECEIPT_URL=
+BREW_REVIEW_RECEIPT_API_KEY=
 ```
 
-## Required Environment
+Optional KeeperHub execution log lookup:
 
-`BREW_REVIEW_RECEIPT_URL` and `BREW_REVIEW_RECEIPT_API_KEY` are used by `/api/keeperhub/trigger`.
+```env
+KEEPERHUB_WORKFLOW_ID=
+KEEPERHUB_API_KEY=
+KEEPERHUB_API_BASE_URL=
+```
 
-`KEEPERHUB_API_KEY` and `KEEPERHUB_WORKFLOW_ID` are used by `/api/keeperhub/execution` to read execution status and logs.
+Optional issuer evidence uploads:
 
-`KEEPERHUB_WEBHOOK_URL` and `KEEPERHUB_WEBHOOK_API_KEY` belong in `packages/receipt-service`, not in Vercel.
+```env
+PINATA_JWT=
+NEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs/
+```
 
-`BREW_0G_STORAGE_PRIVATE_KEY`, `BREW_REVIEW_COORDINATOR_PRIVATE_KEY`, and `OG_COMPUTE_APP_SECRET` also belong in `packages/receipt-service`, not in Vercel.
+`PINATA_JWT` is used only by `/api/ipfs/upload`. The client uploads a file to
+that route, the route pins it to public IPFS, then the trust detail page fills
+matching EAS fields such as `deliverable_uri`, `deliverable_hash`,
+`report_uri`, `report_hash`, or `verification_source`.
 
-`BREW_REVIEW_RECEIPT_URL` should point to the public receipt service endpoint, usually:
+Keep these out of the web app:
 
 ```text
-https://<receipt-service-origin>/review-receipt
+BREW_REVIEW_COORDINATOR_PRIVATE_KEY
+BREW_0G_STORAGE_PRIVATE_KEY
+ZERO_G_PRIVATE_KEY
+OG_COMPUTE_APP_SECRET
+KEEPERHUB_WEBHOOK_URL
+KEEPERHUB_WEBHOOK_API_KEY
 ```

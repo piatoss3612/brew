@@ -1,6 +1,16 @@
 # Brew Receipt Service
 
-Standalone service for the Brew release path:
+Standalone service for the Brew release path.
+
+For the full system flow, see [../../docs/workflow.md](../../docs/workflow.md).
+For the live demo sequence, see
+[../../docs/demo-runbook.md](../../docs/demo-runbook.md).
+
+The service owns server-side secrets, runs the 0G review council, stores the
+receipt artifact, signs the release receipt, and calls the KeeperHub workflow.
+The web app should only call this service.
+
+## Release Path
 
 ```text
 Web UI

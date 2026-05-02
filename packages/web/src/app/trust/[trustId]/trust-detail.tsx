@@ -45,6 +45,10 @@ import {
   txLink,
 } from '../../../format';
 import { fetchKeeperHubEvidence, triggerKeeperHubRelease } from '../../../keeperhub';
+import {
+  buildEvidenceFieldPatch,
+  MAX_IPFS_EVIDENCE_FILE_BYTES,
+} from '../../../ipfs-evidence.mjs';
 import { fetchReviewReceiptArtifact } from '../../../review-receipt-artifact';
 import {
   buildSponsorEvidence,
@@ -92,6 +96,16 @@ type StoredAttestationDraft = {
   schemaUid?: string;
   beneficiary?: string;
   savedAt: string;
+};
+type IpfsEvidenceUpload = {
+  cid: string;
+  uri: string;
+  gatewayUrl: string;
+  bytes32Hash: Hex;
+  hashAlgorithm: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
 };
 
 type SchemaRecord = {
@@ -382,6 +396,44 @@ function encodeAttestationData(fields: SchemaField[], values: Record<string, str
   );
 
   return encodeAbiParameters(parameters, parsedValues);
+}
+
+function formatEvidenceFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function readIpfsEvidenceUpload(value: unknown): IpfsEvidenceUpload {
+  if (!value || typeof value !== 'object') {
+    throw new Error('IPFS upload response was empty');
+  }
+  const record = value as Record<string, unknown>;
+  const cid = typeof record.cid === 'string' ? record.cid : '';
+  const uri = typeof record.uri === 'string' ? record.uri : '';
+  const gatewayUrl = typeof record.gatewayUrl === 'string' ? record.gatewayUrl : '';
+  const bytes32Hash = typeof record.bytes32Hash === 'string' ? record.bytes32Hash : '';
+  const hashAlgorithm =
+    typeof record.hashAlgorithm === 'string' ? record.hashAlgorithm : 'sha256';
+  const fileName = typeof record.fileName === 'string' ? record.fileName : 'evidence';
+  const mimeType = typeof record.mimeType === 'string' ? record.mimeType : '';
+  const size = typeof record.size === 'number' ? record.size : 0;
+
+  if (!cid || !uri.startsWith('ipfs://') || !isBytes32(bytes32Hash)) {
+    throw new Error('IPFS upload response was missing cid, uri, or bytes32 hash');
+  }
+
+  return {
+    cid,
+    uri,
+    gatewayUrl,
+    bytes32Hash,
+    hashAlgorithm,
+    fileName,
+    mimeType,
+    size,
+  };
 }
 
 function readAttestationUid(
@@ -810,6 +862,9 @@ export function TrustDetail({ trustId }: { trustId: string }) {
   const [coordinatorSignature, setCoordinatorSignature] = useState('');
   const [coordinatorSignatureEdited, setCoordinatorSignatureEdited] = useState(false);
   const [attestationFieldValues, setAttestationFieldValues] = useState<Record<string, string>>({});
+  const [ipfsEvidenceUpload, setIpfsEvidenceUpload] = useState<IpfsEvidenceUpload | null>(null);
+  const [ipfsEvidenceUploading, setIpfsEvidenceUploading] = useState(false);
+  const [ipfsEvidenceError, setIpfsEvidenceError] = useState<string | null>(null);
   const [attestationHash, setAttestationHash] = useState<string | null>(null);
   const [createdAttestationUid, setCreatedAttestationUid] = useState<string | null>(null);
   const [releaseHash, setReleaseHash] = useState<string | null>(null);
@@ -1002,6 +1057,19 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     () => (schemaRecord ? parseSchemaFields(schemaRecord.schema) : []),
     [schemaRecord],
   );
+  const evidenceUploadFields = useMemo(
+    () =>
+      schemaFields.filter((field) => {
+        const name = field.name.toLowerCase();
+        return (
+          (field.type === 'string' &&
+            (name.endsWith('_uri') || name.endsWith('uri') || name === 'verification_source')) ||
+          (field.type === 'bytes32' && (name.endsWith('_hash') || name.endsWith('hash')))
+        );
+      }),
+    [schemaFields],
+  );
+  const evidenceUploadFieldNames = evidenceUploadFields.map((field) => field.name).join(', ');
   const issuerAllowed = issuerReads.data?.[0]?.result === true;
   const attestationExpiryWindow = Number(template?.expiryWindowSeconds ?? '0');
   const attestationExpirationSeconds =
@@ -1059,6 +1127,7 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     Boolean(schemaRecord) &&
     schemaFields.length > 0 &&
     !createdAttestationUid &&
+    !ipfsEvidenceUploading &&
     !actionBusy;
   const canRefund =
     Boolean(trust) &&
@@ -1126,6 +1195,59 @@ export function TrustDetail({ trustId }: { trustId: string }) {
     setActiveAction(null);
     setReleaseHash(null);
     setErrorMessage(null);
+  }
+
+  async function uploadIpfsEvidence(file: File | undefined) {
+    if (!file) return;
+    if (file.size > MAX_IPFS_EVIDENCE_FILE_BYTES) {
+      setIpfsEvidenceError(
+        `File exceeds the ${formatEvidenceFileSize(MAX_IPFS_EVIDENCE_FILE_BYTES)} evidence upload limit`,
+      );
+      return;
+    }
+
+    setIpfsEvidenceUploading(true);
+    setIpfsEvidenceError(null);
+    setIpfsEvidenceUpload(null);
+    setErrorMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/ipfs/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          body && typeof body === 'object' && typeof (body as Record<string, unknown>).error === 'string'
+            ? ((body as Record<string, unknown>).error as string)
+            : `IPFS upload failed with HTTP ${response.status}`;
+        throw new Error(message);
+      }
+
+      const upload = readIpfsEvidenceUpload(body);
+      const patch = buildEvidenceFieldPatch(schemaFields, {
+        uri: upload.uri,
+        bytes32Hash: upload.bytes32Hash,
+      });
+
+      setIpfsEvidenceUpload(upload);
+      setAttestationFieldValues((current) => ({
+        ...current,
+        ...patch,
+      }));
+      setStep('idle');
+      setActiveAction(null);
+      setAttestationHash(null);
+      setCreatedAttestationUid(null);
+    } catch (error) {
+      setIpfsEvidenceError(error instanceof Error ? error.message : 'IPFS upload failed');
+    } finally {
+      setIpfsEvidenceUploading(false);
+    }
   }
 
   async function issueAttestation() {
@@ -1879,6 +2001,69 @@ export function TrustDetail({ trustId }: { trustId: string }) {
                   )}
                 </label>
               ))}
+            </div>
+
+            <div className="evidence-upload-panel">
+              <div>
+                <span className="data-label">Evidence file</span>
+                <strong>Upload to IPFS and fill attestation fields</strong>
+                <p>
+                  {evidenceUploadFieldNames
+                    ? `Auto-fills ${evidenceUploadFieldNames}.`
+                    : 'This schema has no URI/hash evidence fields.'}
+                </p>
+              </div>
+              <label className="evidence-upload-control">
+                <input
+                  type="file"
+                  disabled={ipfsEvidenceUploading || evidenceUploadFields.length === 0}
+                  onChange={(event) => {
+                    const input = event.currentTarget;
+                    void uploadIpfsEvidence(input.files?.[0]).finally(() => {
+                      input.value = '';
+                    });
+                  }}
+                />
+                <span>{ipfsEvidenceUploading ? 'Uploading evidence' : 'Upload evidence file'}</span>
+              </label>
+              <p className="form-note">
+                Max {formatEvidenceFileSize(MAX_IPFS_EVIDENCE_FILE_BYTES)}. Use demo-safe files only;
+                public IPFS evidence is not private.
+              </p>
+              {ipfsEvidenceUpload ? (
+                <div className="evidence-upload-result">
+                  <div>
+                    <span className="data-label">Uploaded</span>
+                    <strong title={ipfsEvidenceUpload.fileName}>{ipfsEvidenceUpload.fileName}</strong>
+                  </div>
+                  <div>
+                    <span className="data-label">IPFS URI</span>
+                    {ipfsEvidenceUpload.gatewayUrl ? (
+                      <a
+                        href={ipfsEvidenceUpload.gatewayUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={ipfsEvidenceUpload.uri}
+                      >
+                        {shortHash(ipfsEvidenceUpload.uri)}
+                      </a>
+                    ) : (
+                      <strong title={ipfsEvidenceUpload.uri}>{shortHash(ipfsEvidenceUpload.uri)}</strong>
+                    )}
+                  </div>
+                  <div>
+                    <span className="data-label">{ipfsEvidenceUpload.hashAlgorithm}</span>
+                    <strong title={ipfsEvidenceUpload.bytes32Hash}>
+                      {shortHash(ipfsEvidenceUpload.bytes32Hash)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="data-label">Size</span>
+                    <strong>{formatEvidenceFileSize(ipfsEvidenceUpload.size)}</strong>
+                  </div>
+                </div>
+              ) : null}
+              {ipfsEvidenceError ? <p className="data-error">{ipfsEvidenceError}</p> : null}
             </div>
 
             <button className="primary-action" disabled={!canAttest} onClick={issueAttestation}>
