@@ -6,6 +6,8 @@ Brew separates the review layer from the release authority.
 release still has to pass contract checks in `AttestationVerifier` and
 `BrewEscrow`.
 
+Visual version: [Brew release flow Excalidraw](brew-release-flow.excalidraw).
+
 ## Actors
 
 | Actor | Role |

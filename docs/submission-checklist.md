@@ -20,6 +20,7 @@ Agents.
 - Team member names and contact info.
 - Protocol features and SDKs used.
 - AI/development-assistance disclosure: `docs/ai-usage.md`.
+- Demo boundaries and production path: `docs/limitations-and-roadmap.md`.
 
 ## 0G Track Evidence
 
@@ -78,6 +79,8 @@ Agents.
   production-style deployment would disable it and use issuer allowlists.
 - Public IPFS uploads are demo-safe only; sensitive real-world evidence would
   require encryption or a privacy-preserving storage path.
+- Current 0G review is a structured release review, not full forensic analysis
+  of every uploaded attachment.
 
 ## Demo Must Show
 

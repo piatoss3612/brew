@@ -109,6 +109,8 @@ flowchart LR
 - [Demo runbook](docs/demo-runbook.md): short live-demo checklist.
 - [Submission checklist](docs/submission-checklist.md): final prize and rules
   review before submitting.
+- [Limitations and roadmap](docs/limitations-and-roadmap.md): current demo
+  boundaries and production path.
 - [AI usage](docs/ai-usage.md): runtime AI and development-assistance
   disclosure.
 - [KeeperHub feedback](FEEDBACK.md): integration feedback and reproducible
