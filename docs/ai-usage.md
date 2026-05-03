@@ -19,22 +19,22 @@ proof, receipt fields, coordinator signature, and release state.
 
 ## Development Assistance
 
-AI tools were used lightly during early exploration and more actively during the
-final implementation push starting on May 1, 2026. Assistance focused on:
+We used OpenAI Codex as a pair-programming and review assistant during the
+hackathon.
 
-- sponsor and competitor research;
-- product framing and workflow design;
-- Solidity, Next.js, receipt-service, and subgraph implementation support;
-- UI direction, copy, and interaction refinements;
-- debugging, test planning, and documentation drafts.
+The initial Solidity interfaces and core contract structure were written
+manually, then Codex helped review the design, improve implementation details,
+add Foundry tests, and debug verifier configuration, receipt signatures, and
+deployment scripts.
 
-Human decisions and verification covered:
+Codex also helped implement and iterate on the Next.js UI, including trust
+creation, trust detail views, attestation issuance, KeeperHub release
+triggering, local cache scoping, status displays, and demo polish. For
+infrastructure, Codex helped with the receipt service, 0G Compute/Storage
+integration, Railway/Vercel deployment setup, and environment documentation.
 
-- final product scope and demo narrative;
-- sponsor integration choices;
-- deployed contract and service configuration;
-- wallet operations, secret management, and live workflow setup;
-- final review of generated code, docs, tests, and demo behavior.
+The team made the final architecture decisions, handled wallets, secrets,
+deployments, and verified the live demo flow.
 
 ## Disclosure Boundary
 
